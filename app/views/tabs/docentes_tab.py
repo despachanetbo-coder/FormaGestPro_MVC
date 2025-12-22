@@ -1,786 +1,165 @@
 # app/views/tabs/docentes_tab.py
 """
-Pestaña de Docentes - Versión completa similar a estudiantes_tab.py
+Pestaña de gestión de docentes - Implementación completa con flujo mejorado
 """
+
 import logging
-import os
-import sys
 from pathlib import Path
-from datetime import datetime
 
 from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QGridLayout, QGroupBox,
-    QLabel, QLineEdit, QPushButton, QComboBox, QTableWidget,
-    QTableWidgetItem, QHeaderView, QMessageBox, QProgressDialog,
-    QToolButton, QFrame, QSizePolicy, QSpacerItem, QTextEdit, 
-    QDialog, QFormLayout, QDateEdit, QDoubleSpinBox, QCheckBox,
-    QFileDialog
+    QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QTableWidget,
+    QTableWidgetItem, QHeaderView, QMessageBox, QLineEdit, QLabel,
+    QComboBox, QFormLayout, QGroupBox, QGridLayout, QFrame
 )
-from PySide6.QtCore import Qt, QTimer, Signal, Slot, QSize
-from PySide6.QtGui import QColor, QFont, QIcon, QDesktopServices
-from PySide6.QtCore import QUrl
+from PySide6.QtCore import Qt, Signal, Slot
+from PySide6.QtGui import QIcon, QFont
 
-# Importar modelos
 from app.models.docente_model import DocenteModel
-from app.models.gasto_operativo_model import GastoOperativoModel
-
-# Importar diálogos
-from app.views.dialogs.docente_form_dialog import DocenteFormDialog, DocenteInfoDialog
 
 logger = logging.getLogger(__name__)
 
-# Agregar el directorio raíz al path de Python
-root_dir = Path(__file__).parent
-sys.path.insert(0, str(root_dir))
-
-###########################
-# DIÁLOGOS DE DOCENTES #
-###########################
-class GastoOperativoDialog(QDialog):
-    """Diálogo para registrar/ver gastos operativos - Doble uso"""
-    
-    gasto_guardado = Signal(dict)
-    constancia_emitida = Signal(dict)
-    
-    def __init__(self, datos_predefinidos=None, modo_lectura=False, parent=None):
-        super().__init__(parent)
-        
-        self.datos_predefinidos = datos_predefinidos or {}
-        self.modo_lectura = modo_lectura
-        self.es_pago_honorarios = 'descripcion' in self.datos_predefinidos
-        
-        self.setup_ui()
-        self.setup_connections()
-        
-        if self.datos_predefinidos:
-            self.cargar_datos_predefinidos()
-        
-        if self.modo_lectura:
-            self.set_readonly_mode(True)
-            self.configurar_botones_modo_lectura()
-    
-    def setup_ui(self):
-        """Configurar interfaz del diálogo de gastos"""
-        if self.modo_lectura:
-            self.setWindowTitle("📄 Constancia de Egreso")
-        elif self.es_pago_honorarios:
-            self.setWindowTitle("💰 Pago de Honorarios")
-        else:
-            self.setWindowTitle("📝 Registrar Gasto Operativo")
-        
-        layout = QVBoxLayout(self)
-        layout.setSpacing(15)
-        
-        # ============ INFORMACIÓN DEL GASTO ============
-        group_gasto = QGroupBox("📋 Información del Gasto" if not self.modo_lectura else "📋 Detalles del Egreso")
-        form_gasto = QGridLayout()
-        form_gasto.setSpacing(10)
-        
-        # Fila 0: Fecha
-        form_gasto.addWidget(QLabel("Fecha:*"), 0, 0)
-        self.date_fecha = QDateEdit()
-        self.date_fecha.setDate(datetime.now().date())
-        self.date_fecha.setCalendarPopup(True)
-        form_gasto.addWidget(self.date_fecha, 0, 1)
-        
-        # Fila 0: Monto
-        form_gasto.addWidget(QLabel("Monto (Bs.):*"), 0, 2)
-        self.spin_monto = QDoubleSpinBox()
-        self.spin_monto.setRange(0, 100000)
-        self.spin_monto.setDecimals(2)
-        self.spin_monto.setPrefix("Bs. ")
-        form_gasto.addWidget(self.spin_monto, 0, 3)
-        
-        # Fila 1: Categoría
-        form_gasto.addWidget(QLabel("Categoría:*"), 1, 0)
-        self.combo_categoria = QComboBox()
-        self.combo_categoria.addItems(GastoOperativoModel.CATEGORIAS)
-        form_gasto.addWidget(self.combo_categoria, 1, 1)
-        
-        # Fila 1: Subcategoría
-        form_gasto.addWidget(QLabel("Subcategoría:"), 1, 2)
-        self.combo_subcategoria = QComboBox()
-        form_gasto.addWidget(self.combo_subcategoria, 1, 3)
-        
-        # Conectar cambio de categoría para actualizar subcategorías
-        self.combo_categoria.currentTextChanged.connect(self.actualizar_subcategorias)
-        
-        # Fila 2: Descripción
-        form_gasto.addWidget(QLabel("Descripción:*"), 2, 0)
-        self.txt_descripcion = QTextEdit()
-        self.txt_descripcion.setMaximumHeight(60)
-        form_gasto.addWidget(self.txt_descripcion, 2, 1, 1, 3)
-        
-        # Fila 3: Proveedor
-        form_gasto.addWidget(QLabel("Proveedor:"), 3, 0)
-        self.txt_proveedor = QLineEdit()
-        form_gasto.addWidget(self.txt_proveedor, 3, 1)
-        
-        # Fila 3: N° Factura
-        form_gasto.addWidget(QLabel("N° Factura:"), 3, 2)
-        self.txt_nro_factura = QLineEdit()
-        form_gasto.addWidget(self.txt_nro_factura, 3, 3)
-        
-        # Fila 4: Forma de Pago
-        form_gasto.addWidget(QLabel("Forma de Pago:*"), 4, 0)
-        self.combo_forma_pago = QComboBox()
-        self.combo_forma_pago.addItems(GastoOperativoModel.FORMAS_PAGO)
-        form_gasto.addWidget(self.combo_forma_pago, 4, 1)
-        
-        # Fila 4: N° Comprobante
-        form_gasto.addWidget(QLabel("N° Comprobante:"), 4, 2)
-        self.txt_comprobante = QLineEdit()
-        form_gasto.addWidget(self.txt_comprobante, 4, 3)
-        
-        group_gasto.setLayout(form_gasto)
-        layout.addWidget(group_gasto)
-        
-        # ============ BOTONES ============
-        if not self.modo_lectura:
-            # Botones para modo registro/edición
-            hbox_botones = QHBoxLayout()
-            
-            self.btn_guardar = QPushButton("💾 Registrar Egreso" if not self.es_pago_honorarios else "💰 Registrar Pago")
-            self.btn_guardar.setStyleSheet("""
-                QPushButton {
-                    background-color: #27ae60;
-                    color: white;
-                    padding: 10px 30px;
-                    font-weight: bold;
-                    border-radius: 5px;
-                }
-                QPushButton:hover {
-                    background-color: #219653;
-                }
-            """)
-            self.btn_guardar.clicked.connect(self.validar_y_guardar)
-            
-            self.btn_cancelar = QPushButton("❌ Salir")
-            self.btn_cancelar.setStyleSheet("""
-                QPushButton {
-                    background-color: #e74c3c;
-                    color: white;
-                    padding: 10px 30px;
-                    border-radius: 5px;
-                }
-                QPushButton:hover {
-                    background-color: #c0392b;
-                }
-            """)
-            self.btn_cancelar.clicked.connect(self.reject)
-            
-            hbox_botones.addStretch()
-            hbox_botones.addWidget(self.btn_guardar)
-            hbox_botones.addWidget(self.btn_cancelar)
-            layout.addLayout(hbox_botones)
-        
-        # Actualizar subcategorías iniciales
-        self.actualizar_subcategorias(self.combo_categoria.currentText())
-    
-    def configurar_botones_modo_lectura(self):
-        """Configurar botones especiales para modo lectura"""
-        # Obtener el layout principal
-        main_layout = self.layout()
-        
-        # Crear layout de botones
-        button_layout = QHBoxLayout()
-        
-        # Botón Emitir Constancia
-        self.btn_emitir_constancia = QPushButton("📄 Emitir Constancia de Egreso")
-        self.btn_emitir_constancia.setStyleSheet("""
-            QPushButton {
-                background-color: #3498db;
-                color: white;
-                padding: 10px 20px;
-                border-radius: 5px;
-                font-weight: bold;
-                font-size: 12px;
-                min-width: 200px;
-            }
-            QPushButton:hover {
-                background-color: #2980b9;
-                border: 2px solid #1f618d;
-            }
-            QPushButton:pressed {
-                background-color: #1f618d;
-            }
-        """)
-        self.btn_emitir_constancia.setToolTip("Generar e imprimir constancia de egreso")
-        
-        # Botón Salir
-        self.btn_salir = QPushButton("✖️ Salir")
-        self.btn_salir.setStyleSheet("""
-            QPushButton {
-                background-color: #7f8c8d;
-                color: white;
-                padding: 10px 30px;
-                border-radius: 5px;
-                font-weight: bold;
-                font-size: 12px;
-                min-width: 100px;
-            }
-            QPushButton:hover {
-                background-color: #95a5a6;
-                border: 2px solid #7f8c8d;
-            }
-            QPushButton:pressed {
-                background-color: #7f8c8d;
-            }
-        """)
-        self.btn_salir.setToolTip("Cerrar esta ventana")
-        
-        # Agregar botones al layout
-        button_layout.addStretch()
-        button_layout.addWidget(self.btn_emitir_constancia)
-        button_layout.addWidget(self.btn_salir)
-        
-        # Agregar el layout de botones al layout principal
-        main_layout.addLayout(button_layout)
-    
-    def set_readonly_mode(self, readonly=True):
-        """Establecer todos los campos en modo solo lectura"""
-        widgets = [
-            self.date_fecha, self.spin_monto, self.combo_categoria,
-            self.combo_subcategoria, self.txt_descripcion, self.txt_proveedor,
-            self.txt_nro_factura, self.combo_forma_pago, self.txt_comprobante
-        ]
-        
-        for widget in widgets:
-            if hasattr(widget, 'setReadOnly'):
-                widget.setReadOnly(readonly)
-            if hasattr(widget, 'setEnabled'):
-                widget.setEnabled(not readonly)
-        
-        # Estilos para modo lectura
-        if readonly:
-            style = """
-                QLineEdit:read-only, QComboBox:disabled, QDateEdit:read-only, 
-                QDoubleSpinBox:disabled, QTextEdit:read-only {
-                    background-color: #f5f5f5;
-                    color: #666666;
-                    border: 1px solid #dddddd;
-                }
-            """
-            for widget in widgets:
-                widget.setStyleSheet(style)
-    
-    def setup_connections(self):
-        """Conectar señales"""
-        if self.modo_lectura:
-            self.btn_emitir_constancia.clicked.connect(self.on_emitir_constancia_clicked)
-            self.btn_salir.clicked.connect(self.reject)
-    
-    def actualizar_subcategorias(self, categoria):
-        """Actualizar las subcategorías según la categoría seleccionada"""
-        self.combo_subcategoria.clear()
-        self.combo_subcategoria.addItem("")  # Opción vacía
-        
-        if categoria in GastoOperativoModel.SUBCATEGORIAS:
-            self.combo_subcategoria.addItems(GastoOperativoModel.SUBCATEGORIAS[categoria])
-    
-    def cargar_datos_predefinidos(self):
-        """Cargar datos predefinidos (para pago de honorarios)"""
-        if 'descripcion' in self.datos_predefinidos:
-            self.txt_descripcion.setPlainText(self.datos_predefinidos['descripcion'])
-        
-        if 'monto' in self.datos_predefinidos:
-            self.spin_monto.setValue(self.datos_predefinidos['monto'])
-        
-        if 'categoria' in self.datos_predefinidos:
-            index = self.combo_categoria.findText(self.datos_predefinidos['categoria'])
-            if index >= 0:
-                self.combo_categoria.setCurrentIndex(index)
-    
-    def cargar_datos_docente(self, docente_data):
-        """Carga los datos del docente en los campos del formulario"""
-        try:
-            # Información personal
-            self.txt_ci_numero.setText(docente_data.get('ci_numero', ''))
-            self.combo_expedicion.setCurrentText(docente_data.get('expedicion', 'BE'))
-            self.txt_nombres.setText(docente_data.get('nombres', ''))
-            self.txt_apellidos.setText(docente_data.get('apellidos', ''))
-
-            # Fecha de nacimiento
-            fecha_nac = docente_data.get('fecha_nacimiento')
-            if fecha_nac:
-                self.date_fecha_nacimiento.setDate(fecha_nac)
-
-            # Grado académico
-            self.combo_grado_academico.setCurrentText(docente_data.get('grado_academico', ''))
-
-            # Información de contacto
-            self.txt_telefono.setText(docente_data.get('telefono', ''))
-            self.txt_email.setText(docente_data.get('email', ''))
-
-            # Información profesional
-            self.txt_especialidad.setText(docente_data.get('especialidad', ''))
-            self.spin_honorario_hora.setValue(docente_data.get('honorario_hora', 50.0))
-
-            # CV
-            ruta_cv = docente_data.get('ruta_cv')
-            if ruta_cv and os.path.exists(ruta_cv):
-                self.ruta_cv = ruta_cv
-                nombre_archivo = os.path.basename(ruta_cv)
-
-                # Formatear la información para mostrar
-                info_texto = nombre_archivo
-                if len(info_texto) > 30:
-                    info_texto = info_texto[:27] + "..."
-
-                self.lbl_cv_info.setText(info_texto)
-                self.btn_ver_cv.setEnabled(True)
-
-            # Estado
-            self.check_activo.setChecked(docente_data.get('activo', True))
-
-        except Exception as e:
-            print(f"Error al cargar datos del docente: {e}")
-
-    def obtener_datos_formulario(self):
-        """Obtener y validar datos del formulario"""
-        errores = []
-        
-        # Validar monto
-        monto = self.spin_monto.value()
-        if monto <= 0:
-            errores.append("El monto debe ser mayor a 0")
-        
-        # Validar categoría
-        categoria = self.combo_categoria.currentText()
-        if not categoria:
-            errores.append("La categoría es obligatoria")
-        
-        # Validar descripción
-        descripcion = self.txt_descripcion.toPlainText().strip()
-        if not descripcion:
-            errores.append("La descripción es obligatoria")
-        
-        # Validar forma de pago
-        forma_pago = self.combo_forma_pago.currentText()
-        if not forma_pago:
-            errores.append("La forma de pago es obligatoria")
-        
-        return errores, {
-            'fecha': self.date_fecha.date().toString('yyyy-MM-dd'),
-            'monto': monto,
-            'categoria': categoria,
-            'subcategoria': self.combo_subcategoria.currentText() or None,
-            'descripcion': descripcion,
-            'proveedor': self.txt_proveedor.text().strip() or None,
-            'nro_factura': self.txt_nro_factura.text().strip() or None,
-            'forma_pago': forma_pago,
-            'comprobante_nro': self.txt_comprobante.text().strip() or None
-        }
-    
-    def validar_y_guardar(self):
-        """Validar y guardar los datos del gasto"""
-        errores, datos = self.obtener_datos_formulario()
-        
-        if errores:
-            QMessageBox.warning(self, "Validación", "\n".join(errores))
-            return
-        
-        try:
-            # Crear y guardar gasto
-            gasto = GastoOperativoModel(**datos)
-            gasto_id = gasto.save()
-            
-            # Mostrar mensaje de éxito
-            if self.es_pago_honorarios:
-                mensaje = f"Pago de honorarios registrado exitosamente\nID: {gasto_id}"
-            else:
-                mensaje = f"Gasto operativo registrado exitosamente\nID: {gasto_id}"
-            
-            QMessageBox.information(self, "✅ Éxito", mensaje)
-            
-            # Emitir señal con datos del gasto guardado
-            datos['id'] = gasto_id
-            self.gasto_guardado.emit(datos)
-            
-            # Cerrar diálogo actual y abrir en modo lectura
-            self.close()
-            
-            # Abrir diálogo en modo lectura
-            dialog_lectura = GastoOperativoDialog(
-                datos_predefinidos=datos,
-                modo_lectura=True,
-                parent=self.parent()
-            )
-            dialog_lectura.constancia_emitida.connect(self.constancia_emitida)
-            dialog_lectura.exec()
-            
-        except Exception as e:
-            QMessageBox.critical(self, "Error", f"Error al guardar gasto: {str(e)}")
-            logger.error(f"Error al guardar gasto operativo: {e}")
-    
-    def on_emitir_constancia_clicked(self):
-        """Manejador para botón Emitir Constancia"""
-        try:
-            # Obtener datos del formulario
-            datos = {
-                'fecha': self.date_fecha.date().toString('dd/MM/yyyy'),
-                'monto': self.spin_monto.value(),
-                'descripcion': self.txt_descripcion.toPlainText(),
-                'categoria': self.combo_categoria.currentText(),
-                'forma_pago': self.combo_forma_pago.currentText(),
-                'comprobante': self.txt_comprobante.text() or 'N/A'
-            }
-            
-            # Emitir señal
-            self.constancia_emitida.emit(datos)
-            
-            QMessageBox.information(
-                self, 
-                "📄 Constancia Generada",
-                "Constancia de egreso generada exitosamente.\n\n"
-                "Se ha guardado en la carpeta de documentos."
-            )
-            
-            self.accept()
-            
-        except Exception as e:
-            QMessageBox.critical(self, "Error", f"Error al emitir constancia: {str(e)}")
-
-
-#################################
-# PESTAÑA PRINCIPAL DOCENTES #
-#################################
 class DocentesTab(QWidget):
-    """Pestaña principal de gestión de docentes - Versión similar a estudiantes"""
+    """Pestaña para gestión de docentes con flujo completo edición/lectura"""
+    
+    # Señales para comunicación con MainWindow
+    docente_seleccionado = Signal(dict)
+    necesita_actualizar = Signal()
     
     def __init__(self, parent=None):
         super().__init__(parent)
         
-        # Configuración inicial
-        self.current_page = 1
-        self.records_per_page = 25
-        self.total_records = 0
-        self.total_pages = 1
-        self.current_filter = None
-        self.docentes_cache = []
+        self.docentes_data = []
+        self.current_filter = 'todos'
         
         self.setup_ui()
         self.setup_connections()
-        self.cargar_docentes_inicial()
+        self.cargar_docentes()
     
     def setup_ui(self):
-        """Configurar interfaz - Versión similar a estudiantes"""
-        main_layout = QVBoxLayout(self)
-        main_layout.setSpacing(10)
+        """Configurar la interfaz de usuario de la pestaña"""
+        layout = QVBoxLayout(self)
+        layout.setSpacing(10)
+        layout.setContentsMargins(10, 10, 10, 10)
         
-        # ==================== SECCIÓN DE BÚSQUEDA ====================
-        search_group = QGroupBox("🔍 Buscar Docentes")
-        search_group.setStyleSheet("""
-            QGroupBox {
-               color: #2c3e50;
+        # ============ ENCABEZADO ============
+        header_frame = QFrame()
+        header_frame.setStyleSheet("""
+            QFrame {
+                background-color: #f8f9fa;
+                border-radius: 10px;
+                padding: 15px;
             }
         """)
-        search_layout = QGridLayout()
         
-        # Búsqueda por CI
-        label_ci = QLabel("Buscar por CI:")
-        label_ci.setStyleSheet("color: black; font-weight: bold;")
-        search_layout.addWidget(label_ci, 0, 0)
-        self.txt_buscar_ci = QLineEdit()
-        self.txt_buscar_ci.setPlaceholderText("Ingrese número de CI")
-        self.txt_buscar_ci.setStyleSheet("color: #212121; background-color: #FFFFFF;")
-        search_layout.addWidget(self.txt_buscar_ci, 0, 1)
+        header_layout = QHBoxLayout(header_frame)
         
-        self.combo_expedicion = QComboBox()
-        self.combo_expedicion.addItems(["Todas", "BE", "CH", "CB", "LP", "OR", "PD", "PT", "SC", "TJ", "EX"])
-        search_layout.addWidget(self.combo_expedicion, 0, 2)
-        
-        self.btn_buscar_ci = QPushButton("🔍 Buscar por CI")
-        self.btn_buscar_ci.setStyleSheet("""
-            QPushButton {
-                background-color: #3498db;
-                color: white;
-                padding: 5px 10px;
-                border-radius: 4px;
-            }
-            QPushButton:hover {
-                background-color: #2980b9;
-            }
-        """)
-        search_layout.addWidget(self.btn_buscar_ci, 0, 3)
-        
-        # Búsqueda por nombre
-        label_nombre = QLabel("Buscar por Nombre o Apellido:")
-        label_nombre.setStyleSheet("color: black; font-weight: bold;")
-        search_layout.addWidget(label_nombre, 1, 0)
-        self.txt_buscar_nombre = QLineEdit()
-        self.txt_buscar_nombre.setStyleSheet("color: #212121; background-color: #FFFFFF;")
-        self.txt_buscar_nombre.setPlaceholderText("Ingrese nombre o apellido")
-        search_layout.addWidget(self.txt_buscar_nombre, 1, 1, 1, 2)
-        
-        self.btn_buscar_nombre = QPushButton("👤 Buscar por nombre")
-        self.btn_buscar_nombre.setStyleSheet("""
-            QPushButton {
-                background-color: #2ecc71;
-                color: white;
-                padding: 5px 10px;
-                border-radius: 4px;
-            }
-            QPushButton:hover {
-                background-color: #27ae60;
-            }
-        """)
-        search_layout.addWidget(self.btn_buscar_nombre, 1, 3)
-        
-        search_group.setLayout(search_layout)
-        main_layout.addWidget(search_group)
-        
-        # ==================== BOTONES DE ACCIÓN ====================
-        action_layout = QHBoxLayout()
-        
-        self.btn_nuevo = QPushButton("➕ Nuevo Docente")
-        self.btn_nuevo.setIcon(QIcon(":/icons/add.png") if hasattr(QIcon, "fromTheme") else QIcon())
-        self.btn_nuevo.setStyleSheet("""
-            QPushButton {
-                background-color: #9b59b6;
-                color: white;
-                padding: 8px 15px;
-                border-radius: 4px;
+        # Título
+        title_label = QLabel("👨‍🏫 Gestión de Docentes")
+        title_label.setStyleSheet("""
+            QLabel {
+                font-size: 20px;
                 font-weight: bold;
-            }
-            QPushButton:hover {
-                background-color: #8e44ad;
+                color: #2c3e50;
             }
         """)
+        header_layout.addWidget(title_label)
         
-        self.btn_mostrar_todos = QPushButton("📋 Mostrar Todos")
-        self.btn_mostrar_todos.setStyleSheet("""
+        header_layout.addStretch()
+        
+        # Botón Nuevo Docente
+        self.btn_nuevo_docente = QPushButton("➕ Nuevo Docente")
+        self.btn_nuevo_docente.setFixedHeight(40)
+        self.btn_nuevo_docente.setStyleSheet("""
             QPushButton {
-                background-color: #7f8c8d;
+                background-color: #27ae60;
                 color: white;
-                padding: 8px 15px;
-                border-radius: 4px;
+                font-weight: bold;
+                border-radius: 6px;
+                padding: 8px 16px;
+                font-size: 14px;
             }
             QPushButton:hover {
-                background-color: #95a5a6;
+                background-color: #219653;
+            }
+            QPushButton:pressed {
+                background-color: #1e8449;
+            }
+        """)
+        self.btn_nuevo_docente.setToolTip("Agregar un nuevo docente al sistema")
+        header_layout.addWidget(self.btn_nuevo_docente)
+        
+        layout.addWidget(header_frame)
+        
+        # ============ FILTROS ============
+        filter_frame = QFrame()
+        filter_frame.setStyleSheet("""
+            QFrame {
+                background-color: #ffffff;
+                border: 1px solid #dee2e6;
+                border-radius: 8px;
+                padding: 15px;
             }
         """)
         
-        action_layout.addWidget(self.btn_nuevo)
-        action_layout.addWidget(self.btn_mostrar_todos)
-        action_layout.addStretch()
+        filter_layout = QHBoxLayout(filter_frame)
         
-        main_layout.addLayout(action_layout)
+        # Etiqueta de filtro
+        filter_label = QLabel("Filtrar por estado:")
+        filter_label.setStyleSheet("font-weight: bold; color: #495057;")
+        filter_layout.addWidget(filter_label)
         
-        # ==================== TABLA DE DOCENTES ====================
-        self.table_docentes = QTableWidget()
-        self.table_docentes.setColumnCount(5)  # 5 columnas
-        self.table_docentes.setHorizontalHeaderLabels([
-            "CI", "Nombre Completo", "Especialidad", "Estado", "Acciones"
-        ])
-        
-        # Configurar tabla
-        header = self.table_docentes.horizontalHeader()
-        header.setSectionResizeMode(0, QHeaderView.ResizeToContents)  # CI
-        header.setSectionResizeMode(1, QHeaderView.Stretch)           # Nombre
-        header.setSectionResizeMode(2, QHeaderView.ResizeToContents)  # Especialidad
-        header.setSectionResizeMode(3, QHeaderView.ResizeToContents)  # Estado
-        header.setSectionResizeMode(4, QHeaderView.Fixed)             # Acciones
-        self.table_docentes.setColumnWidth(4, 200)
-        
-        # Estilo de la tabla
-        self.table_docentes.setAlternatingRowColors(True)
-        self.table_docentes.setStyleSheet("""
-            QTableWidget {
-                background-color: #fbfbfb;
-                color: #212121;
-                border-color: #E0E0E0;
-                alternate-background-color: #F8F8F8;
-                selection-background-color: #9b59b6;
-                selection-color: #FFFFFF;
-                font-size: 11px;
+        # Combo box para filtro
+        self.combo_filtro = QComboBox()
+        self.combo_filtro.addItems(['Todos', 'Activos', 'Inactivos'])
+        self.combo_filtro.setFixedHeight(36)
+        self.combo_filtro.setFixedWidth(150)
+        self.combo_filtro.setStyleSheet("""
+            QComboBox {
+                padding: 8px;
+                border: 1px solid #ced4da;
+                border-radius: 4px;
+                font-size: 14px;
             }
-            QTableWidget::item {
-                padding: 4px;
-            }
-            QTableWidget::item:selected {
-                background-color: #9b59b6;
-                color: white;
+            QComboBox:focus {
+                border: 2px solid #3498db;
             }
         """)
+        filter_layout.addWidget(self.combo_filtro)
         
-        main_layout.addWidget(self.table_docentes)
+        # Buscador
+        search_label = QLabel("Buscar:")
+        search_label.setStyleSheet("font-weight: bold; color: #495057; margin-left: 20px;")
+        filter_layout.addWidget(search_label)
         
-        # ==================== PAGINACIÓN ====================
-        pagination_layout = QHBoxLayout()
+        self.txt_buscar = QLineEdit()
+        self.txt_buscar.setPlaceholderText("Nombre, CI o especialidad...")
+        self.txt_buscar.setFixedHeight(36)
+        self.txt_buscar.setMinimumWidth(250)
+        self.txt_buscar.setStyleSheet("""
+            QLineEdit {
+                padding: 8px 12px;
+                border: 1px solid #ced4da;
+                border-radius: 4px;
+                font-size: 14px;
+            }
+            QLineEdit:focus {
+                border: 2px solid #3498db;
+            }
+        """)
+        filter_layout.addWidget(self.txt_buscar)
         
-        # Controles de registros por página
-        pagination_layout.addWidget(QLabel("Mostrar:"))
-        self.combo_registros_pagina = QComboBox()
-        self.combo_registros_pagina.addItems(["10", "25", "50", "100", "Todos"])
-        self.combo_registros_pagina.setCurrentText("25")
-        pagination_layout.addWidget(self.combo_registros_pagina)
-        
-        pagination_layout.addSpacerItem(QSpacerItem(20, 0, QSizePolicy.Expanding, QSizePolicy.Minimum))
-        
-        # Botones de paginación
-        self.btn_primera = QPushButton("⏮️ Primera")
-        self.btn_anterior = QPushButton("◀️ Anterior")
-        self.btn_siguiente = QPushButton("Siguiente ▶️")
-        self.btn_ultima = QPushButton("Última ⏭️")
-        
-        for btn in [self.btn_primera, self.btn_anterior, self.btn_siguiente, self.btn_ultima]:
-            btn.setFixedSize(100, 30)
-            pagination_layout.addWidget(btn)
-        
-        # Etiquetas de paginación
-        self.lbl_pagina_info = QLabel("Página 0 de 0")
-        self.lbl_contador = QLabel("Mostrando 0-0 de 0 docentes")
-        pagination_layout.addWidget(self.lbl_pagina_info)
-        pagination_layout.addWidget(self.lbl_contador)
-        
-        main_layout.addLayout(pagination_layout)
-        
-        # ==================== BARRA DE ESTADO ====================
-        self.status_bar = QLabel("Sistema de gestión de docentes listo")
-        self.status_bar.setStyleSheet("color: #7f8c8d; font-style: italic; padding: 5px;")
-        main_layout.addWidget(self.status_bar)
-    
-    def setup_connections(self):
-        """Conectar todas las señales"""
-        # Botones de búsqueda
-        self.btn_buscar_ci.clicked.connect(self.buscar_por_ci)
-        self.btn_buscar_nombre.clicked.connect(self.buscar_por_nombre)
-        self.btn_mostrar_todos.clicked.connect(self.mostrar_todos)
-        self.btn_nuevo.clicked.connect(self.nuevo_docente)
-        
-        # Buscar con Enter
-        self.txt_buscar_ci.returnPressed.connect(self.buscar_por_ci)
-        self.txt_buscar_nombre.returnPressed.connect(self.buscar_por_nombre)
-        
-        # Paginación
-        self.btn_primera.clicked.connect(lambda: self.cambiar_pagina(1))
-        self.btn_anterior.clicked.connect(self.pagina_anterior)
-        self.btn_siguiente.clicked.connect(self.pagina_siguiente)
-        self.btn_ultima.clicked.connect(self.ultima_pagina)
-        self.combo_registros_pagina.currentTextChanged.connect(self.cambiar_registros_pagina)
-        
-        # Doble click en tabla para abrir detalles
-        self.table_docentes.doubleClicked.connect(self.on_doble_click_tabla)
-    
-    # ==================== MÉTODOS DE CARGA ====================
-    
-    def cargar_docentes_inicial(self):
-        """Cargar docentes al iniciar"""
-        QTimer.singleShot(100, self.mostrar_todos)
-    
-    def cargar_docentes(self, filtro=None):
-        """Cargar docentes con paginación"""
-        try:
-            # Limpiar tabla
-            self.table_docentes.setRowCount(0)
-            
-            # Obtener docentes según filtro
-            docentes = []
-            
-            if filtro is None:
-                # Mostrar todos los activos
-                docentes = DocenteModel.buscar_activos()
-            elif 'ci_numero' in filtro:
-                # Buscar por CI
-                expedicion = filtro.get('ci_expedicion', 'Todas')
-                if expedicion != 'Todas':
-                    # Buscar por CI específico
-                    docente = DocenteModel.buscar_por_ci(
-                        filtro['ci_numero'], 
-                        expedicion
-                    )
-                    if docente:
-                        docentes = [docente]
-                else:
-                    # Buscar solo por número de CI
-                    todos = DocenteModel.buscar_activos()
-                    docentes = [
-                        d for d in todos 
-                        if filtro['ci_numero'] in d.ci_numero
-                    ]
-            elif 'nombre' in filtro:
-                # Buscar por nombre - Necesitaríamos implementar este método
-                # Por ahora, usar búsqueda manual
-                todos = DocenteModel.buscar_activos()
-                texto_busqueda = filtro['nombre'].lower()
-                docentes = [
-                    d for d in todos 
-                    if texto_busqueda in d.nombres.lower() or 
-                       texto_busqueda in d.apellidos.lower() or
-                       texto_busqueda in d.nombre_completo.lower()
-                ]
-            
-            self.docentes_cache = docentes
-            self.total_records = len(docentes)
-            
-            if not docentes:
-                # Mostrar mensaje de "sin datos"
-                self.table_docentes.setRowCount(1)
-                item = QTableWidgetItem("No se encontraron docentes")
-                item.setTextAlignment(Qt.AlignCenter)
-                item.setForeground(QColor("#7f8c8d"))
-                self.table_docentes.setItem(0, 0, item)
-                self.table_docentes.setSpan(0, 0, 1, 5)
-            else:
-                # Llenar tabla
-                for i, docente in enumerate(docentes):
-                    self.table_docentes.insertRow(i)
-                    self.table_docentes.setRowHeight(i, 40)
-                    
-                    # CI
-                    self.table_docentes.setItem(i, 0, QTableWidgetItem(
-                        f"{docente.ci_numero}-{docente.ci_expedicion}"))
-                    
-                    # Nombre completo con grado
-                    nombre_completo = docente.nombre_completo
-                    if docente.max_grado_academico:
-                        nombre_completo = f"{docente.max_grado_academico} {nombre_completo}"
-                    self.table_docentes.setItem(i, 1, QTableWidgetItem(nombre_completo))
-                    
-                    # Especialidad
-                    self.table_docentes.setItem(i, 2, QTableWidgetItem(docente.especialidad or ""))
-                    
-                    # Estado
-                    estado = QTableWidgetItem("✅ Activo" if docente.activo else "❌ Inactivo")
-                    estado.setForeground(QColor("#27ae60") if docente.activo else QColor("#e74c3c"))
-                    estado.setTextAlignment(Qt.AlignCenter)
-                    self.table_docentes.setItem(i, 3, estado)
-                    
-                    # Acciones
-                    acciones_widget = self.crear_widget_acciones(docente)
-                    self.table_docentes.setCellWidget(i, 4, acciones_widget)
-            
-            # Actualizar controles
-            self.actualizar_controles_paginacion()
-            self.actualizar_contador()
-            
-            self.status_bar.setText(f"Cargados {len(docentes)} docentes")
-            
-        except Exception as e:
-            self.status_bar.setText(f"Error: {str(e)}")
-            QMessageBox.critical(self, "Error", f"Error cargando docentes: {str(e)}")
-            logger.error(f"Error en cargar_docentes: {e}")
-    
-    def crear_widget_acciones(self, docente):
-        """Crear widget con botones de acciones"""
-        widget = QWidget()
-        layout = QHBoxLayout(widget)
-        layout.setContentsMargins(3, 3, 3, 3)
-        layout.setSpacing(3)
-
-        # Botón 1: Ver Detalles (solo lectura)
-        btn_detalles = QPushButton("👁️")
-        btn_detalles.setIconSize(QSize(28, 28))
-        btn_detalles.setToolTip("Ver detalles del docente (solo lectura)")
-        btn_detalles.setFixedSize(40, 28)
-        btn_detalles.setStyleSheet("""
+        # Botón Buscar
+        self.btn_buscar = QPushButton("🔍 Buscar")
+        self.btn_buscar.setFixedHeight(36)
+        self.btn_buscar.setStyleSheet("""
             QPushButton {
                 background-color: #3498db;
                 color: white;
-                border-radius: 3px;
+                font-weight: bold;
+                border-radius: 4px;
+                padding: 8px 16px;
+                font-size: 14px;
                 border: none;
-                font-size: 11px;
             }
             QPushButton:hover {
                 background-color: #2980b9;
@@ -789,438 +168,505 @@ class DocentesTab(QWidget):
                 background-color: #1f618d;
             }
         """)
-        btn_detalles.clicked.connect(lambda: self.ver_detalles_docente(docente))
-
-        # Botón 2: Editar
-        btn_editar = QPushButton("✏️")
-        btn_editar.setToolTip("Editar docente")
-        btn_editar.setFixedSize(40, 28)
-        btn_editar.setStyleSheet("""
+        filter_layout.addWidget(self.btn_buscar)
+        
+        # Botón Limpiar
+        self.btn_limpiar = QPushButton("🗑️ Limpiar")
+        self.btn_limpiar.setFixedHeight(36)
+        self.btn_limpiar.setStyleSheet("""
             QPushButton {
-                background-color: #9b59b6;
-                color: white;
-                border-radius: 3px;
-                border: none;
-                font-size: 11px;
-            }
-            QPushButton:hover {
-                background-color: #8e44ad;
-            }
-            QPushButton:pressed {
-                background-color: #7d3c98;
-            }
-        """)
-        btn_editar.clicked.connect(lambda: self.editar_docente(docente))
-
-        # Botón 3: Pago de Honorarios
-        btn_pago_honorarios = QPushButton("💰")
-        btn_pago_honorarios.setToolTip("Registrar pago de honorarios")
-        btn_pago_honorarios.setFixedSize(40, 28)
-        btn_pago_honorarios.setStyleSheet("""
-            QPushButton {
-                background-color: #f39c12;
-                color: white;
-                border-radius: 3px;
-                border: none;
-                font-size: 11px;
-            }
-            QPushButton:hover {
-                background-color: #e67e22;
-            }
-            QPushButton:pressed {
-                background-color: #d35400;
-            }
-        """)
-        btn_pago_honorarios.clicked.connect(lambda: self.pago_honorarios_docente(docente))
-
-        # Botón 4: Ver CV (solo si existe)
-        btn_ver_cv = QPushButton("📄")
-        btn_ver_cv.setToolTip("Ver currículum vitae")
-        btn_ver_cv.setFixedSize(40, 28)
-        btn_ver_cv.setStyleSheet("""
-            QPushButton {
-                background-color: #2ecc71;
-                color: white;
-                border-radius: 3px;
-                border: none;
-                font-size: 11px;
-            }
-            QPushButton:hover {
-                background-color: #27ae60;
-            }
-            QPushButton:pressed {
-                background-color: #219653;
-            }
-            QPushButton:disabled {
                 background-color: #95a5a6;
-            }
-        """)
-        
-        # Habilitar solo si hay CV
-        if docente.curriculum_path:
-            btn_ver_cv.clicked.connect(lambda: self.abrir_cv_docente(docente))
-        else:
-            btn_ver_cv.setEnabled(False)
-            btn_ver_cv.setToolTip("No hay CV disponible")
-
-        # Botón 5: Eliminar
-        btn_eliminar = QPushButton("🗑️")
-        btn_eliminar.setToolTip("Eliminar docente")
-        btn_eliminar.setFixedSize(40, 28)
-        btn_eliminar.setStyleSheet("""
-            QPushButton {
-                background-color: #e74c3c;
                 color: white;
-                border-radius: 3px;
+                font-weight: bold;
+                border-radius: 4px;
+                padding: 8px 16px;
+                font-size: 14px;
                 border: none;
-                font-size: 11px;
             }
             QPushButton:hover {
-                background-color: #c0392b;
+                background-color: #7f8c8d;
             }
             QPushButton:pressed {
-                background-color: #a93226;
+                background-color: #616a6b;
             }
         """)
-        btn_eliminar.clicked.connect(lambda: self.eliminar_docente(docente))
-
-        # Agregar todos los botones al layout
-        layout.addWidget(btn_detalles)
-        layout.addWidget(btn_editar)
-        layout.addWidget(btn_pago_honorarios)
-        layout.addWidget(btn_ver_cv)
-        layout.addWidget(btn_eliminar)
-        layout.addStretch()
-
-        return widget
-    
-    # ==================== MÉTODOS DE BÚSQUEDA ====================
-    
-    def buscar_por_ci(self):
-        """Buscar docente por CI"""
-        ci_numero = self.txt_buscar_ci.text().strip()
-        expedicion = self.combo_expedicion.currentText()
+        filter_layout.addWidget(self.btn_limpiar)
         
-        if not ci_numero:
-            QMessageBox.warning(self, "Advertencia", "Ingrese un número de CI para buscar")
-            return
+        filter_layout.addStretch()
+        layout.addWidget(filter_frame)
         
-        self.current_filter = {'ci_numero': ci_numero}
-        if expedicion != "Todas":
-            self.current_filter['ci_expedicion'] = expedicion
+        # ============ TABLA DE DOCENTES ============
+        self.tabla_docentes = QTableWidget()
+        self.tabla_docentes.setStyleSheet("""
+            QTableWidget {
+                background-color: white;
+                alternate-background-color: #f8f9fa;
+                border: 1px solid #dee2e6;
+                border-radius: 8px;
+                gridline-color: #dee2e6;
+                color: black;
+            }
+            QTableWidget::item {
+                padding: 8px;
+                border-bottom: 1px solid #dee2e6;
+            }
+            QTableWidget::item:selected {
+                background-color: #3498db;
+                color: white;
+            }
+            QHeaderView::section {
+                background-color: #2c3e50;
+                color: white;
+                padding: 10px;
+                border: none;
+                font-weight: bold;
+                font-size: 13px;
+            }
+        """)
         
-        self.current_page = 1
-        self.cargar_docentes(self.current_filter)
-        self.status_bar.setText(f"Búsqueda por CI: {ci_numero}-{expedicion}")
+        self.tabla_docentes.setAlternatingRowColors(True)
+        self.tabla_docentes.setSelectionBehavior(QTableWidget.SelectRows)
+        self.tabla_docentes.setSelectionMode(QTableWidget.SingleSelection)
+        
+        layout.addWidget(self.tabla_docentes, 1)
+        
+        # ============ ESTADO ============
+        self.lbl_estado = QLabel("Cargando docentes...")
+        self.lbl_estado.setStyleSheet("color: #7f8c8d; font-style: italic;")
+        self.lbl_estado.setAlignment(Qt.AlignCenter)
+        layout.addWidget(self.lbl_estado)
     
-    def buscar_por_nombre(self):
-        """Buscar docente por nombre"""
-        texto = self.txt_buscar_nombre.text().strip()
+    def setup_connections(self):
+        """Conectar señales y slots"""
+        # Botones
+        self.btn_nuevo_docente.clicked.connect(self.agregar_nuevo_docente)
+        self.btn_buscar.clicked.connect(self.buscar_docentes)
+        self.btn_limpiar.clicked.connect(self.limpiar_busqueda)
         
-        if not texto:
-            QMessageBox.warning(self, "Advertencia", "Ingrese un nombre o apellido para buscar")
-            return
-        
-        self.current_filter = {'nombre': texto}
-        self.current_page = 1
-        self.cargar_docentes(self.current_filter)
-        self.status_bar.setText(f"Búsqueda por nombre: {texto}")
+        # Filtros
+        self.combo_filtro.currentTextChanged.connect(self.filtrar_docentes)
+        self.txt_buscar.returnPressed.connect(self.buscar_docentes)
     
-    def mostrar_todos(self):
-        """Mostrar todos los docentes"""
-        self.txt_buscar_ci.clear()
-        self.txt_buscar_nombre.clear()
-        self.combo_expedicion.setCurrentIndex(0)
-        
-        self.current_filter = None
-        self.current_page = 1
-        self.cargar_docentes()
-        self.status_bar.setText("Mostrando todos los docentes")
+    def cargar_docentes(self, filtro='todos'):
+        """Cargar docentes desde la base de datos"""
+        try:
+            self.lbl_estado.setText("Cargando docentes...")
+            
+            # Obtener todos los docentes
+            self.docentes_data = DocenteModel.get_all()
+            
+            # Aplicar filtro inicial
+            self.current_filter = filtro
+            self.filtrar_docentes()
+            
+            if self.docentes_data:
+                self.lbl_estado.setText(f"✅ {len(self.docentes_data)} docentes cargados")
+            else:
+                self.lbl_estado.setText("📭 No hay docentes registrados")
+                
+        except Exception as e:
+            logger.error(f"Error al cargar docentes: {e}")
+            self.lbl_estado.setText("❌ Error al cargar docentes")
+            QMessageBox.critical(self, "Error", f"Error al cargar docentes: {str(e)}")
     
-    # ==================== MÉTODOS CRUD ====================
+    def filtrar_docentes(self):
+        """Filtrar docentes según el estado seleccionado"""
+        try:
+            filtro = self.combo_filtro.currentText().lower()
+            
+            docentes_filtrados = []
+            for docente in self.docentes_data:
+                if filtro == 'todos':
+                    docentes_filtrados.append(docente)
+                elif filtro == 'activos' and docente.activo == 1:
+                    docentes_filtrados.append(docente)
+                elif filtro == 'inactivos' and docente.activo == 0:
+                    docentes_filtrados.append(docente)
+            
+            self.mostrar_docentes_en_tabla(docentes_filtrados)
+            
+        except Exception as e:
+            logger.error(f"Error al filtrar docentes: {e}")
     
-    def nuevo_docente(self):
-        """Abrir formulario para nuevo docente"""
-        dialog = DocenteFormDialog(parent=self)
-        dialog.docente_guardado.connect(self.on_docente_guardado)
-        dialog.exec()
+    def buscar_docentes(self):
+        """Buscar docentes según el texto ingresado"""
+        try:
+            texto = self.txt_buscar.text().strip().lower()
+            
+            if not texto:
+                self.filtrar_docentes()
+                return
+            
+            docentes_filtrados = []
+            for docente in self.docentes_data:
+                # Buscar en múltiples campos
+                campos = [
+                    str(docente.nombres or ''),
+                    str(docente.apellidos or ''),
+                    str(docente.ci_numero or ''),
+                    str(getattr(docente, 'especialidad', '') or ''),
+                    str(getattr(docente, 'grado_academico', '') or '')
+                ]
+                
+                if any(texto in campo.lower() for campo in campos):
+                    docentes_filtrados.append(docente)
+            
+            self.mostrar_docentes_en_tabla(docentes_filtrados)
+            
+            if docentes_filtrados:
+                self.lbl_estado.setText(f"🔍 {len(docentes_filtrados)} docentes encontrados")
+            else:
+                self.lbl_estado.setText("🔍 No se encontraron docentes")
+                
+        except Exception as e:
+            logger.error(f"Error al buscar docentes: {e}")
+    
+    def limpiar_busqueda(self):
+        """Limpiar el campo de búsqueda y mostrar todos"""
+        self.txt_buscar.clear()
+        self.filtrar_docentes()
+    
+    def mostrar_docentes_en_tabla(self, docentes):
+        """Mostrar docentes en la tabla"""
+        try:
+            self.tabla_docentes.clear()
+            
+            # Configurar columnas
+            columnas = [
+                "ID", "CI", "Nombres", "Apellidos", "Especialidad",
+                "Grado Académico", "Email", "Teléfono", "CV", "Estado", "Acciones"
+            ]
+            
+            self.tabla_docentes.setColumnCount(len(columnas))
+            self.tabla_docentes.setHorizontalHeaderLabels(columnas)
+            self.tabla_docentes.setRowCount(len(docentes))
+            
+            # Llenar datos
+            for fila, docente in enumerate(docentes):
+                # ID
+                item_id = QTableWidgetItem(str(docente.id))
+                item_id.setTextAlignment(Qt.AlignCenter)
+                self.tabla_docentes.setItem(fila, 0, item_id)
+                
+                # CI
+                ci_completo = f"{docente.ci_numero}-{docente.ci_expedicion}"
+                item_ci = QTableWidgetItem(ci_completo)
+                item_ci.setTextAlignment(Qt.AlignCenter)
+                self.tabla_docentes.setItem(fila, 1, item_ci)
+                
+                # Nombres
+                item_nombres = QTableWidgetItem(str(docente.nombres))
+                self.tabla_docentes.setItem(fila, 2, item_nombres)
+                
+                # Apellidos
+                item_apellidos = QTableWidgetItem(str(docente.apellidos))
+                self.tabla_docentes.setItem(fila, 3, item_apellidos)
+                
+                # Especialidad
+                especialidad = getattr(docente, 'especialidad', '') or ''
+                item_especialidad = QTableWidgetItem(especialidad)
+                self.tabla_docentes.setItem(fila, 4, item_especialidad)
+                
+                # Grado Académico
+                grado = getattr(docente, 'grado_academico', '') or ''
+                item_grado = QTableWidgetItem(grado)
+                self.tabla_docentes.setItem(fila, 5, item_grado)
+                
+                # Email
+                email = getattr(docente, 'email', '') or ''
+                item_email = QTableWidgetItem(email)
+                self.tabla_docentes.setItem(fila, 6, item_email)
+                
+                # Teléfono
+                telefono = getattr(docente, 'telefono', '') or ''
+                item_telefono = QTableWidgetItem(telefono)
+                self.tabla_docentes.setItem(fila, 7, item_telefono)
+                
+                # CV
+                tiene_cv = "✅" if getattr(docente, 'curriculum_path', None) else "❌"
+                item_cv = QTableWidgetItem(tiene_cv)
+                item_cv.setTextAlignment(Qt.AlignCenter)
+                self.tabla_docentes.setItem(fila, 8, item_cv)
+                
+                # Estado
+                estado = "✅ Activo" if docente.activo == 1 else "❌ Inactivo"
+                item_estado = QTableWidgetItem(estado)
+                item_estado.setTextAlignment(Qt.AlignCenter)
+                
+                # Color según estado
+                if docente.activo == 1:
+                    item_estado.setForeground(Qt.darkGreen)
+                else:
+                    item_estado.setForeground(Qt.darkRed)
+                    
+                self.tabla_docentes.setItem(fila, 9, item_estado)
+                
+                # Acciones (botones)
+                widget_acciones = QWidget()
+                layout_acciones = QHBoxLayout(widget_acciones)
+                layout_acciones.setContentsMargins(5, 2, 5, 2)
+                layout_acciones.setSpacing(5)
+                
+                # Botón Ver Detalles
+                btn_detalles = QPushButton("👁️ Ver")
+                btn_detalles.setFixedHeight(28)
+                btn_detalles.setStyleSheet("""
+                    QPushButton {
+                        background-color: #3498db;
+                        color: white;
+                        border-radius: 4px;
+                        padding: 4px 8px;
+                        font-size: 11px;
+                        border: none;
+                    }
+                    QPushButton:hover {
+                        background-color: #2980b9;
+                    }
+                    QPushButton:pressed {
+                        background-color: #1f618d;
+                    }
+                """)
+                btn_detalles.clicked.connect(lambda checked, d=docente: self.ver_detalles_docente(d))
+                
+                # Botón Editar
+                btn_editar = QPushButton("✏️ Editar")
+                btn_editar.setFixedHeight(28)
+                btn_editar.setStyleSheet("""
+                    QPushButton {
+                        background-color: #f39c12;
+                        color: white;
+                        border-radius: 4px;
+                        padding: 4px 8px;
+                        font-size: 11px;
+                        border: none;
+                    }
+                    QPushButton:hover {
+                        background-color: #e67e22;
+                    }
+                    QPushButton:pressed {
+                        background-color: #d35400;
+                    }
+                """)
+                btn_editar.clicked.connect(lambda checked, d=docente: self.editar_docente(d.id))
+                
+                layout_acciones.addWidget(btn_detalles)
+                layout_acciones.addWidget(btn_editar)
+                layout_acciones.addStretch()
+                
+                self.tabla_docentes.setCellWidget(fila, 10, widget_acciones)
+            
+            # Ajustar columnas
+            self.tabla_docentes.horizontalHeader().setSectionResizeMode(2, QHeaderView.Stretch)  # Nombres
+            self.tabla_docentes.horizontalHeader().setSectionResizeMode(3, QHeaderView.Stretch)  # Apellidos
+            self.tabla_docentes.horizontalHeader().setSectionResizeMode(4, QHeaderView.Stretch)  # Especialidad
+            
+            # Columnas fijas
+            self.tabla_docentes.setColumnWidth(0, 50)   # ID
+            self.tabla_docentes.setColumnWidth(1, 100)  # CI
+            self.tabla_docentes.setColumnWidth(5, 120)  # Grado
+            self.tabla_docentes.setColumnWidth(6, 180)  # Email
+            self.tabla_docentes.setColumnWidth(7, 100)  # Teléfono
+            self.tabla_docentes.setColumnWidth(8, 50)   # CV
+            self.tabla_docentes.setColumnWidth(9, 100)  # Estado
+            self.tabla_docentes.setColumnWidth(10, 150) # Acciones
+            
+        except Exception as e:
+            logger.error(f"Error al mostrar docentes en tabla: {e}")
+            self.lbl_estado.setText("❌ Error al mostrar docentes")
+    
+    # ============================================================================
+    # MÉTODOS PRINCIPALES DE GESTIÓN
+    # ============================================================================
+    
+    def agregar_nuevo_docente(self):
+        """Abrir diálogo para nuevo docente"""
+        try:
+            from app.views.dialogs.docente_form_dialog import DocenteFormDialog
+            
+            # Abrir diálogo para nuevo docente
+            dialog = DocenteFormDialog(
+                docente_id=None,
+                modo_lectura=False,
+                parent=self
+            )
+            
+            # Conectar señal para mostrar después de guardar
+            dialog.docente_editar.connect(
+                lambda data: self.mostrar_docente_en_modo_lectura(data['id'])
+            )
+            
+            if dialog.exec():
+                print(f"DEBUG: Nuevo docente creado")
+                self.cargar_docentes(self.current_filter)
+                
+        except Exception as e:
+            logger.error(f"Error al crear docente: {e}")
+            QMessageBox.critical(self, "Error", f"Error al crear docente: {str(e)}")
     
     def ver_detalles_docente(self, docente):
         """Mostrar diálogo con detalles del docente (solo lectura)"""
-        docente_data = {
-            'id': docente.id,
-            'ci_numero': docente.ci_numero,
-            'ci_expedicion': docente.ci_expedicion,
-            'nombres': docente.nombres,
-            'apellidos': docente.apellidos,
-            'fecha_nacimiento': docente.fecha_nacimiento,
-            'max_grado_academico': docente.max_grado_academico,
-            'telefono': docente.telefono,
-            'email': docente.email,
-            'curriculum_path': docente.curriculum_path,
-            'especialidad': docente.especialidad,
-            'honorario_hora': docente.honorario_hora,
-            'activo': docente.activo
-        }
-
-        dialog = DocenteInfoDialog(docente_id=docente_data[id], parent=self)
-
-        # Conectar señales
-        dialog.docente_pago_honorarios.connect(self.on_pago_honorarios_docente)
-        dialog.docente_borrar.connect(self.on_borrar_docente_desde_dialog)
-
-        dialog.exec()
-    
-    def editar_docente(self, docente):
-        """Editar docente"""
-        docente_data = {
-            'id': docente.id,
-            'ci_numero': docente.ci_numero,
-            'ci_expedicion': docente.ci_expedicion,
-            'nombres': docente.nombres,
-            'apellidos': docente.apellidos,
-            'fecha_nacimiento': docente.fecha_nacimiento,
-            'max_grado_academico': docente.max_grado_academico,
-            'telefono': docente.telefono,
-            'email': docente.email,
-            'curriculum_path': docente.curriculum_path,
-            'especialidad': docente.especialidad,
-            'honorario_hora': docente.honorario_hora,
-            'activo': docente.activo
-        }
-        
-        dialog = DocenteFormDialog(docente_data=docente_data, parent=self)
-        dialog.docente_actualizado.connect(self.on_docente_actualizado)
-        dialog.exec()
-    
-    def on_doble_click_tabla(self, index):
-        """Manejar doble click en la tabla"""
-        row = index.row()
-        if row < len(self.docentes_cache):
-            self.editar_docente(self.docentes_cache[row])
-    
-    def on_docente_guardado(self, datos):
-        """Manejador cuando se guarda un docente"""
         try:
-            # Determinar si es creación o edición
-            es_nuevo = 'id' not in datos
+            print(f"DEBUG ver_detalles_docente: Abriendo diálogo para docente ID {docente.id}")
             
-            if es_nuevo:
-                # CREAR NUEVO DOCENTE
-                docente_creado = DocenteModel.crear_docente(datos)
-                datos['id'] = docente_creado.id
-                docente = docente_creado
-                mensaje_titulo = "✅ Docente Creado"
-            else:
-                # ACTUALIZAR DOCENTE EXISTENTE
-                docente = DocenteModel.find_by_id(datos['id'])
-                if docente:
-                    # Actualizar campos
-                    for key, value in datos.items():
-                        if hasattr(docente, key) and key != 'id':
-                            setattr(docente, key, value)
-                    docente.save()
-                mensaje_titulo = "✅ Docente Actualizado"
+            from app.views.dialogs.docente_form_dialog import DocenteFormDialog
             
-            # Recargar la tabla
-            self.cargar_docentes(self.current_filter)
-            
-            # Mostrar diálogo de detalles en modo lectura
-            QTimer.singleShot(100, lambda: self.mostrar_detalles_despues_de_guardar(docente, mensaje_titulo))
-            
-        except ValueError as e:
-            QMessageBox.warning(self, "Error de Validación", str(e))
-        except Exception as e:
-            QMessageBox.critical(self, "Error", f"Error al guardar docente: {str(e)}")
-            logger.error(f"Error en on_docente_guardado: {e}")
-    
-    def mostrar_detalles_despues_de_guardar(self, docente, titulo):
-        """Mostrar diálogo de detalles después de guardar"""
-        try:
-            # Preparar datos para el diálogo de detalles
+            # Crear diccionario con datos del docente
             docente_data = {
                 'id': docente.id,
                 'ci_numero': docente.ci_numero,
                 'ci_expedicion': docente.ci_expedicion,
                 'nombres': docente.nombres,
                 'apellidos': docente.apellidos,
-                'fecha_nacimiento': docente.fecha_nacimiento,
-                'max_grado_academico': docente.max_grado_academico,
-                'telefono': docente.telefono,
-                'email': docente.email,
-                'curriculum_path': docente.curriculum_path,
-                'especialidad': docente.especialidad,
-                'honorario_hora': docente.honorario_hora,
-                'activo': docente.activo
+                'especialidad': getattr(docente, 'especialidad', ''),
+                'grado_academico': getattr(docente, 'grado_academico', ''),
+                'telefono': getattr(docente, 'telefono', ''),
+                'email': getattr(docente, 'email', ''),
+                'curriculum_path': getattr(docente, 'curriculum_path', None),
+                'activo': getattr(docente, 'activo', 1)
             }
             
-            # Crear diálogo en modo lectura
+            # Abrir diálogo en modo lectura
             dialog = DocenteFormDialog(
-                docente_data=docente_data, 
-                modo_lectura=True, 
+                docente_data=docente_data,
+                modo_lectura=True,
                 parent=self
             )
             
-            # Conectar las señales para los botones especiales
-            dialog.docente_pago_honorarios.connect(self.on_pago_honorarios_docente)
-            dialog.docente_borrar.connect(self.on_borrar_docente_desde_dialog)
+            # Conectar señales para acciones desde modo lectura
+            dialog.docente_editar.connect(
+                lambda data: self.editar_docente(data['id'])
+            )
+            
+            dialog.docente_inscribir.connect(self.on_inscribir_desde_detalles)
+            dialog.docente_borrar.connect(self.on_borrar_desde_detalles)
             
             dialog.exec()
             
         except Exception as e:
-            logger.error(f"Error al mostrar detalles después de guardar: {e}")
-            # Si falla, mostrar mensaje tradicional
-            QMessageBox.information(self, titulo, "Docente guardado exitosamente")
+            print(f"ERROR en ver_detalles_docente: {e}")
+            logger.error(f"Error en ver_detalles_docente: {e}")
+            QMessageBox.critical(self, "Error", f"Error al mostrar detalles: {str(e)}")
     
-    def pago_honorarios_docente(self, docente):
-        """Abrir diálogo de pago de honorarios para docente"""
+    def editar_docente(self, docente_id):
+        """Abrir diálogo para editar un docente"""
         try:
-            # Preparar descripción predefinida
-            descripcion = f"PAGO POR HONORARIOS - {docente.nombre_completo}"
-            if docente.ci_numero:
-                descripcion += f" - CI: {docente.ci_numero}"
+            print(f"DEBUG editar_docente: Abriendo diálogo para ID {docente_id}")
             
-            datos_predefinidos = {
-                'descripcion': descripcion,
-                'categoria': 'PAGO_DOCENTE',
-                'monto': docente.honorario_hora * 8  # Sugerir 8 horas por defecto
-            }
+            from app.views.dialogs.docente_form_dialog import DocenteFormDialog
             
-            # Abrir diálogo de gasto operativo con datos predefinidos
-            dialog = GastoOperativoDialog(
-                datos_predefinidos=datos_predefinidos,
+            # Abrir diálogo en modo edición
+            dialog = DocenteFormDialog(
+                docente_id=docente_id,
+                modo_lectura=False,
                 parent=self
             )
-            dialog.gasto_guardado.connect(self.on_gasto_guardado)
-            dialog.exec()
             
+            # Conectar señal para mostrar después de guardar
+            dialog.docente_editar.connect(
+                lambda data: self.mostrar_docente_en_modo_lectura(data['id'])
+            )
+            
+            if dialog.exec():
+                print(f"DEBUG editar_docente - Diálogo cerrado")
+                self.cargar_docentes(self.current_filter)
+        
         except Exception as e:
-            logger.error(f"Error al abrir pago de honorarios: {e}")
-            QMessageBox.critical(self, "Error", f"Error: {str(e)}")
+            logger.error(f"Error al editar docente: {e}")
+            QMessageBox.critical(self, "Error", f"Error al editar docente: {str(e)}")
     
-    def on_pago_honorarios_docente(self, docente_data):
-        """Manejador para pago de honorarios desde diálogo de detalles"""
+    def mostrar_docente_en_modo_lectura(self, docente_id):
+        """Mostrar docente en modo lectura después de guardar"""
         try:
-            docente = DocenteModel.find_by_id(docente_data['id'])
+            print(f"DEBUG mostrar_docente_en_modo_lectura: ID {docente_id}")
+            
+            from app.models.docente_model import DocenteModel
+            docente = DocenteModel.find_by_id(docente_id)
+            
             if docente:
-                self.pago_honorarios_docente(docente)
+                self.ver_detalles_docente(docente)
+            else:
+                print(f"ERROR: Docente {docente_id} no encontrado")
                 
         except Exception as e:
-            logger.error(f"Error en on_pago_honorarios_docente: {e}")
-            QMessageBox.critical(self, "Error", f"Error: {str(e)}")
+            print(f"ERROR mostrando docente en modo lectura: {e}")
+            logger.error(f"Error mostrando docente en modo lectura: {e}")
     
-    def abrir_cv_docente(self, docente):
-        """Abrir CV del docente en visor PDF"""
+    # ============================================================================
+    # MANEJADORES DE SEÑALES DESDE DIÁLOGO
+    # ============================================================================
+    
+    def on_inscribir_desde_detalles(self, datos_docente):
+        """Manejador para inscribir docente desde modo lectura"""
         try:
-            if docente.curriculum_path and os.path.exists(docente.curriculum_path):
-                url = QUrl.fromLocalFile(docente.curriculum_path)
-                QDesktopServices.openUrl(url)
-            else:
-                QMessageBox.information(self, "Información", "No hay currículum vitae disponible para este docente.")
+            docente_id = datos_docente.get('id')
+            if docente_id:
+                print(f"DEBUG: Asignando cursos a docente ID {docente_id}")
+                # Aquí puedes implementar la lógica para asignar cursos
+                # Por ahora solo mostramos un mensaje
+                QMessageBox.information(
+                    self, 
+                    "Asignar Cursos", 
+                    f"Funcionalidad para asignar cursos al docente {docente_id}\n"
+                    f"(Por implementar)"
+                )
         except Exception as e:
-            QMessageBox.critical(self, "Error", f"No se pudo abrir el archivo PDF: {str(e)}")
+            logger.error(f"Error al inscribir desde detalles: {e}")
     
-    def eliminar_docente(self, docente):
-        """Eliminar docente con confirmación"""
-        respuesta = QMessageBox.question(
-            self, "🗑️ Confirmar Eliminación",
-            f"¿Está seguro de eliminar al docente?\n\n"
-            f"Nombre: {docente.nombre_completo}\n"
-            f"CI: {docente.ci_numero}-{docente.ci_expedicion}\n\n"
-            f"⚠️ Esta acción no se puede deshacer.",
-            QMessageBox.Yes | QMessageBox.No,
-            QMessageBox.No
-        )
-        
-        if respuesta == QMessageBox.Yes:
-            try:
-                # Eliminar usando el modelo
-                success = DocenteModel.delete(docente.id)
-                if success:
-                    QMessageBox.information(self, "✅ Éxito", "Docente eliminado correctamente")
-                    self.cargar_docentes(self.current_filter)
-                else:
-                    QMessageBox.warning(self, "Error", "No se pudo eliminar el docente")
+    def on_borrar_desde_detalles(self, datos_docente):
+        """Manejador para borrar docente desde modo lectura"""
+        try:
+            docente_id = datos_docente.get('id')
+            if docente_id:
+                respuesta = QMessageBox.question(
+                    self,
+                    "Confirmar Eliminación",
+                    f"¿Está seguro de eliminar este docente?\n\n"
+                    f"Esta acción eliminará permanentemente al docente del sistema.\n"
+                    f"ID: {docente_id}",
+                    QMessageBox.Yes | QMessageBox.No,
+                    QMessageBox.No
+                )
+                
+                if respuesta == QMessageBox.Yes:
+                    print(f"DEBUG: Eliminando docente ID {docente_id}")
                     
-            except Exception as e:
-                QMessageBox.critical(self, "Error", f"Error al eliminar: {str(e)}")
-    
-    def on_borrar_docente_desde_dialog(self, docente_data):
-        """Manejador para borrar docente desde diálogo de detalles"""
-        try:
-            docente = DocenteModel.find_by_id(docente_data['id'])
-            if docente:
-                self.eliminar_docente(docente)
+                    # Buscar y eliminar el docente
+                    docente = DocenteModel.find_by_id(docente_id)
+                    if docente:
+                        # Eliminar archivo CV si existe
+                        if hasattr(docente, 'curriculum_path') and docente.curriculum_path:
+                            try:
+                                cv_path = Path(docente.curriculum_path)
+                                if cv_path.exists():
+                                    cv_path.unlink()
+                            except Exception as e:
+                                print(f"Advertencia: No se pudo eliminar CV: {e}")
+                        
+                        # Eliminar de la base de datos
+                        docente.delete()
+                        
+                        # Actualizar tabla
+                        self.cargar_docentes(self.current_filter)
+                        
+                        QMessageBox.information(self, "✅ Éxito", "Docente eliminado correctamente")
+                    else:
+                        QMessageBox.warning(self, "Error", "Docente no encontrado")
+                        
         except Exception as e:
-            logger.error(f"Error al borrar docente desde diálogo: {e}")
-            QMessageBox.critical(self, "Error", f"Error: {str(e)}")
+            logger.error(f"Error al borrar desde detalles: {e}")
+            QMessageBox.critical(self, "Error", f"Error al eliminar docente: {str(e)}")
     
-    def on_gasto_guardado(self, datos_gasto):
-        """Manejador cuando se guarda un gasto"""
-        self.status_bar.setText(f"Gasto registrado exitosamente - ID: {datos_gasto.get('id', 'N/A')}")
+    # ============================================================================
+    # MÉTODOS AUXILIARES
+    # ============================================================================
     
-    # ==================== MÉTODOS DE PAGINACIÓN ====================
-    
-    def actualizar_controles_paginacion(self):
-        """Actualizar controles de paginación"""
-        if self.records_per_page == 0:
-            self.total_pages = 1
-        else:
-            self.total_pages = max(1, (self.total_records + self.records_per_page - 1) // self.records_per_page)
-        
-        self.lbl_pagina_info.setText(f"Página {self.current_page} de {self.total_pages}")
-        
-        # Habilitar/deshabilitar botones
-        self.btn_primera.setEnabled(self.current_page > 1)
-        self.btn_anterior.setEnabled(self.current_page > 1)
-        self.btn_siguiente.setEnabled(self.current_page < self.total_pages)
-        self.btn_ultima.setEnabled(self.current_page < self.total_pages)
-    
-    def actualizar_contador(self):
-        """Actualizar contador de registros"""
-        if self.total_records == 0:
-            self.lbl_contador.setText("No hay docentes")
-        else:
-            if self.records_per_page == 0:
-                inicio = 1
-                fin = self.total_records
-            else:
-                inicio = (self.current_page - 1) * self.records_per_page + 1
-                fin = min(self.current_page * self.records_per_page, self.total_records)
-            
-            self.lbl_contador.setText(f"Mostrando {inicio}-{fin} de {self.total_records} docentes")
-    
-    def cambiar_pagina(self, pagina):
-        """Cambiar a página específica"""
-        if 1 <= pagina <= self.total_pages:
-            self.current_page = pagina
-            self.cargar_docentes(self.current_filter)
-    
-    def pagina_anterior(self):
-        """Ir a página anterior"""
-        if self.current_page > 1:
-            self.current_page -= 1
-            self.cargar_docentes(self.current_filter)
-    
-    def pagina_siguiente(self):
-        """Ir a página siguiente"""
-        if self.current_page < self.total_pages:
-            self.current_page += 1
-            self.cargar_docentes(self.current_filter)
-    
-    def ultima_pagina(self):
-        """Ir a última página"""
-        self.cambiar_pagina(self.total_pages)
-    
-    def cambiar_registros_pagina(self, texto):
-        """Cambiar registros por página"""
-        if texto == "Todos":
-            self.records_per_page = 0
-        else:
-            try:
-                self.records_per_page = int(texto)
-            except:
-                self.records_per_page = 25
-        
-        self.current_page = 1
+    def actualizar_interfaz(self):
+        """Actualizar la interfaz después de cambios"""
         self.cargar_docentes(self.current_filter)
+    
+    def obtener_docente_por_id(self, docente_id):
+        """Obtener docente por ID desde los datos cargados"""
+        for docente in self.docentes_data:
+            if docente.id == docente_id:
+                return docente
+        return None
