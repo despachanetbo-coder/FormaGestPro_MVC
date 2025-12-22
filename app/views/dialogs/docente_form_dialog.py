@@ -364,13 +364,15 @@ class DocenteFormDialog(QDialog):
         return group
     
     def _crear_panel_cv(self):
-        """Crear panel derecho para manejo y vista previa de CV"""
+        """Crear panel derecho para manejo y vista previa de CV con scroll"""
         panel = QWidget()
         panel.setFixedWidth(350)  # Un poco más ancho para mejor visualización
-        layout = QVBoxLayout(panel)
-        layout.setSpacing(15)
-        layout.setAlignment(Qt.AlignTop)
-
+        
+        # Layout principal con scroll
+        main_layout = QVBoxLayout(panel)
+        main_layout.setSpacing(10)
+        main_layout.setContentsMargins(5, 5, 5, 5)
+        
         # Título
         card_title = QLabel("📄 Currículum Vitae")
         card_title.setStyleSheet("""
@@ -380,65 +382,129 @@ class DocenteFormDialog(QDialog):
                 color: #2c3e50;
                 padding: 10px 0;
                 text-align: center;
+                background-color: #f8f9fa;
+                border-radius: 8px;
+                margin-bottom: 5px;
             }
         """)
-        layout.addWidget(card_title)
-
-        # Contenedor principal
+        main_layout.addWidget(card_title)
+        
+        # Crear área de scroll
+        scroll_area = QScrollArea()
+        scroll_area.setWidgetResizable(True)
+        scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)  # Solo scroll vertical
+        scroll_area.setStyleSheet("""
+            QScrollArea {
+                border: none;
+                background-color: transparent;
+            }
+            QScrollBar:vertical {
+                border: none;
+                background: #f8f9fa;
+                width: 10px;
+                border-radius: 5px;
+                margin: 0px;
+            }
+            QScrollBar::handle:vertical {
+                background: #adb5bd;
+                border-radius: 5px;
+                min-height: 30px;
+            }
+            QScrollBar::handle:vertical:hover {
+                background: #6c757d;
+            }
+            QScrollBar::add-line:vertical, 
+            QScrollBar::sub-line:vertical {
+                border: none;
+                background: none;
+                height: 0px;
+            }
+            QScrollBar:left-arrow:vertical, 
+            QScrollBar::right-arrow:vertical {
+                background: none;
+            }
+        """)
+        
+        # Widget contenedor para el scroll
+        scroll_widget = QWidget()
+        scroll_widget.setStyleSheet("background-color: transparent;")
+        scroll_layout = QVBoxLayout(scroll_widget)
+        scroll_layout.setSpacing(15)
+        scroll_layout.setContentsMargins(5, 5, 15, 5)  # Margen derecho para el scroll
+        
+        # Contenedor principal (card)
         card_container = QFrame()
-        card_container.setMinimumHeight(420)  # Más alto para la vista previa
+        card_container.setMinimumHeight(480)  # Más alto para acomodar la vista previa proporcional
         card_container.setStyleSheet("""
             QFrame {
+                background-color: white;
                 border: 2px solid #dee2e6;
                 border-radius: 10px;
                 padding: 15px;
             }
         """)
-
+        
         card_layout = QVBoxLayout(card_container)
         card_layout.setSpacing(15)
         card_layout.setAlignment(Qt.AlignCenter)
-
-        # Marco para la vista previa del PDF
+        
+        # Marco para la vista previa del PDF con proporción carta (A4: 1:1.414)
+        # Ancho: 200px, Alto: 200 * 1.414 ≈ 283px
+        preview_width = 200
+        preview_height = int(preview_width * 1.414)  # Ratio A4 estándar
+        
         preview_frame = QFrame()
-        preview_frame.setFixedSize(280, 280)  # Tamaño fijo para la vista previa
+        preview_frame.setFixedSize(preview_width + 20, preview_height + 20)  # +20 para el padding/borde
         preview_frame.setStyleSheet("""
             QFrame {
                 background-color: #ffffff;
-                border: 3px solid #2c3e50;
+                border: 2px solid #2c3e50;
                 border-radius: 8px;
-                padding: 5px;
+                padding: 10px;
             }
         """)
-
+        
         preview_layout = QVBoxLayout(preview_frame)
-        preview_layout.setContentsMargins(2, 2, 2, 2)
-
-        # Label para mostrar la vista previa
+        preview_layout.setContentsMargins(0, 0, 0, 0)
+        preview_layout.setAlignment(Qt.AlignCenter)
+        
+        # Label para mostrar la vista previa - tamaño proporcional carta
         self.lbl_preview_pdf = QLabel()
-        self.lbl_preview_pdf.setFixedSize(250, 250)
+        self.lbl_preview_pdf.setFixedSize(preview_width, preview_height)
         self.lbl_preview_pdf.setStyleSheet("""
             QLabel {
                 background-color: #ffffff;
                 border: 1px solid #bdc3c7;
                 border-radius: 4px;
+                qproperty-alignment: 'AlignCenter';
             }
         """)
         self.lbl_preview_pdf.setAlignment(Qt.AlignCenter)
         self.lbl_preview_pdf.setText("Vista previa\nPDF")
         self.lbl_preview_pdf.setWordWrap(True)
-
-        preview_layout.addWidget(self.lbl_preview_pdf, alignment=Qt.AlignCenter)
+        
+        preview_layout.addWidget(self.lbl_preview_pdf)
         card_layout.addWidget(preview_frame, alignment=Qt.AlignCenter)
-
-        # Información del archivo
+        
+        # Información del archivo (con scroll interno si es necesario)
+        info_container = QFrame()
+        info_container.setStyleSheet("""
+            QFrame {
+                background-color: transparent;
+                border: none;
+            }
+        """)
+        
+        info_layout = QVBoxLayout(info_container)
+        info_layout.setSpacing(5)
+        
         self.lbl_info_cv = QLabel("No hay CV cargado")
         self.lbl_info_cv.setStyleSheet("""
             QLabel {
                 color: #7f8c8d;
                 font-size: 12px;
                 text-align: center;
-                padding: 8px;
+                padding: 12px;
                 background-color: #f8f9fa;
                 border-radius: 6px;
                 border: 1px dashed #bdc3c7;
@@ -446,18 +512,25 @@ class DocenteFormDialog(QDialog):
         """)
         self.lbl_info_cv.setAlignment(Qt.AlignCenter)
         self.lbl_info_cv.setWordWrap(True)
-        card_layout.addWidget(self.lbl_info_cv)
-
+        self.lbl_info_cv.setTextInteractionFlags(Qt.TextSelectableByMouse)  # Permite seleccionar texto
+        
+        info_layout.addWidget(self.lbl_info_cv)
+        card_layout.addWidget(info_container)
+        
         # Botones para CV (solo en modo edición/creación)
         if not self.modo_lectura:
             self._agregar_botones_cv(card_layout)
-
-        layout.addWidget(card_container)
-        layout.addStretch()
-
-        # Área de botones
-        layout.addWidget(self._crear_area_botones())
-
+        
+        scroll_layout.addWidget(card_container)
+        scroll_layout.addStretch()
+        
+        # Configurar el scroll area
+        scroll_area.setWidget(scroll_widget)
+        main_layout.addWidget(scroll_area, 1)  # El 1 hace que el scroll area se expanda
+        
+        # Área de botones (fuera del scroll)
+        main_layout.addWidget(self._crear_area_botones())
+        
         return panel
     
     def _agregar_botones_cv(self, layout):
