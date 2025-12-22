@@ -5,3 +5,5 @@
 .env
 data/
 logs/
+venv/
+.vscode/
