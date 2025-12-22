@@ -1,0 +1,135 @@
+/* static/styles/main.qss */
+/* Estilos principales de FormaGestPro */
+
+/* Variables globales */
+QMainWindow {
+    background-color: #f8f9fa;
+    font-family: "Segoe UI", Arial, sans-serif;
+    font-size: 14px;
+}
+
+/* Barra lateral */
+QWidget#sidebar {
+    background-color: #2C3E50;
+    border-right: 1px solid #1a252f;
+}
+
+QLabel#sidebarHeader {
+    color: white;
+    font-size: 18px;
+    font-weight: bold;
+    padding: 10px;
+}
+
+QListWidget#navList {
+    background-color: transparent;
+    border: none;
+    color: #ecf0f1;
+    font-size: 14px;
+    outline: none;
+}
+
+QListWidget#navList::item {
+    padding: 10px 15px;
+    border-radius: 5px;
+    margin: 2px 5px;
+}
+
+QListWidget#navList::item:selected {
+    background-color: #3498DB;
+    color: white;
+}
+
+QListWidget#navList::item:hover {
+    background-color: #34495E;
+}
+
+QLabel#userLabel {
+    color: #bdc3c7;
+    font-size: 12px;
+}
+
+/* Tarjetas de resumen */
+QWidget#summaryCard {
+    background-color: white;
+    border-radius: 8px;
+    border: 1px solid #dee2e6;
+    padding: 15px;
+}
+
+/* Botones */
+QPushButton {
+    background-color: #3498DB;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    padding: 8px 16px;
+    font-weight: bold;
+}
+
+QPushButton:hover {
+    background-color: #2980B9;
+}
+
+QPushButton:pressed {
+    background-color: #21618C;
+}
+
+QPushButton:disabled {
+    background-color: #95A5A6;
+    color: #7F8C8D;
+}
+
+/* Botones especiales */
+QPushButton#btnSuccess {
+    background-color: #27AE60;
+}
+
+QPushButton#btnSuccess:hover {
+    background-color: #219653;
+}
+
+QPushButton#btnDanger {
+    background-color: #E74C3C;
+}
+
+QPushButton#btnDanger:hover {
+    background-color: #C0392B;
+}
+
+/* Barra de estado */
+QStatusBar {
+    background-color: #2C3E50;
+    color: white;
+    padding: 5px;
+}
+
+/* Barra de menú */
+QMenuBar {
+    background-color: #2C3E50;
+    color: white;
+}
+
+QMenuBar::item {
+    padding: 5px 10px;
+}
+
+QMenuBar::item:selected {
+    background-color: #3498DB;
+}
+
+/* Barra de herramientas */
+QToolBar {
+    background-color: #ECF0F1;
+    border-bottom: 1px solid #BDC3C7;
+    spacing: 5px;
+    padding: 3px;
+}
+
+/* Archivo principal que importa todos los estilos */
+
+/* Importar tema claro por defecto */
+@import "light.qss";
+
+/* Nota: Los temas se cambian dinámicamente desde Python
+   cambiando entre light.qss y dark.qss */

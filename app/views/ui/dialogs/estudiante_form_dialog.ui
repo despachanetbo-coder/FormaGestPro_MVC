@@ -1,0 +1,276 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+<class>EstudianteFormDialog</class>
+<widget class="QDialog" name="EstudianteFormDialog">
+ <property name="geometry">
+  <rect>
+   <x>0</x>
+   <y>0</y>
+   <width>600</width>
+   <height>500</height>
+  </rect>
+ </property>
+ <property name="minimumSize">
+  <size>
+   <width>600</width>
+   <height>500</height>
+  </size>
+ </property>
+ <property name="windowTitle">
+  <string>Formulario de Estudiante</string>
+ </property>
+ <layout class="QVBoxLayout" name="verticalLayout">
+  <item>
+   <widget class="QGroupBox" name="groupBox">
+    <property name="title">
+     <string>Datos Personales</string>
+    </property>
+    <layout class="QGridLayout" name="gridLayout">
+     <item row="0" column="0">
+      <widget class="QLabel" name="label">
+       <property name="text">
+        <string>CI Número:*</string>
+       </property>
+      </widget>
+     </item>
+     <item row="0" column="1">
+      <widget class="QLineEdit" name="txtCINumero">
+       <property name="placeholderText">
+        <string>Ej: 1234567</string>
+       </property>
+      </widget>
+     </item>
+     <item row="0" column="2">
+      <widget class="QLabel" name="label_2">
+       <property name="text">
+        <string>Expedición:*</string>
+       </property>
+      </widget>
+     </item>
+     <item row="0" column="3">
+      <widget class="QComboBox" name="comboExpedicion">
+       <property name="currentText">
+        <string>SC</string>
+       </property>
+       <item>
+        <property name="text">
+         <string>BE</string>
+        </property>
+       </item>
+       <item>
+        <property name="text">
+         <string>CH</string>
+        </property>
+       </item>
+       <item>
+        <property name="text">
+         <string>CB</string>
+        </property>
+       </item>
+       <item>
+        <property name="text">
+         <string>LP</string>
+        </property>
+       </item>
+       <item>
+        <property name="text">
+         <string>OR</string>
+        </property>
+       </item>
+       <item>
+        <property name="text">
+         <string>PD</string>
+        </property>
+       </item>
+       <item>
+        <property name="text">
+         <string>PT</string>
+        </property>
+       </item>
+       <item>
+        <property name="text">
+         <string>SC</string>
+        </property>
+       </item>
+       <item>
+        <property name="text">
+         <string>TJ</string>
+        </property>
+       </item>
+       <item>
+        <property name="text">
+         <string>EX</string>
+        </property>
+       </item>
+      </widget>
+     </item>
+     <item row="1" column="0">
+      <widget class="QLabel" name="label_3">
+       <property name="text">
+        <string>Nombres:*</string>
+       </property>
+      </widget>
+     </item>
+     <item row="1" column="1" colspan="3">
+      <widget class="QLineEdit" name="txtNombres">
+       <property name="placeholderText">
+        <string>Ej: Juan Carlos</string>
+       </property>
+      </widget>
+     </item>
+     <item row="2" column="0">
+      <widget class="QLabel" name="label_4">
+       <property name="text">
+        <string>Apellidos:*</string>
+       </property>
+      </widget>
+     </item>
+     <item row="2" column="1" colspan="3">
+      <widget class="QLineEdit" name="txtApellidos">
+       <property name="placeholderText">
+        <string>Ej: Pérez González</string>
+       </property>
+      </widget>
+     </item>
+     <item row="3" column="0">
+      <widget class="QLabel" name="label_5">
+       <property name="text">
+        <string>Fecha de Nacimiento:</string>
+       </property>
+      </widget>
+     </item>
+     <item row="3" column="1" colspan="3">
+      <widget class="QDateEdit" name="dateFechaNacimiento">
+       <property name="calendarPopup">
+        <bool>true</bool>
+       </property>
+      </widget>
+     </item>
+     <item row="4" column="0">
+      <widget class="QLabel" name="label_6">
+       <property name="text">
+        <string>Teléfono:</string>
+       </property>
+      </widget>
+     </item>
+     <item row="4" column="1" colspan="3">
+      <widget class="QLineEdit" name="txtTelefono">
+       <property name="placeholderText">
+        <string>Ej: 77654321</string>
+       </property>
+      </widget>
+     </item>
+     <item row="5" column="0">
+      <widget class="QLabel" name="label_7">
+       <property name="text">
+        <string>Email:</string>
+       </property>
+      </widget>
+     </item>
+     <item row="5" column="1" colspan="3">
+      <widget class="QLineEdit" name="txtEmail">
+       <property name="placeholderText">
+        <string>Ej: juan.perez@email.com</string>
+       </property>
+      </widget>
+     </item>
+    </layout>
+   </widget>
+  </item>
+  <item>
+   <widget class="QGroupBox" name="groupBox_2">
+    <property name="title">
+     <string>Información Académica y Profesional</string>
+    </property>
+    <layout class="QGridLayout" name="gridLayout_2">
+     <item row="0" column="0">
+      <widget class="QLabel" name="label_8">
+       <property name="text">
+        <string>Universidad de Egreso:</string>
+       </property>
+      </widget>
+     </item>
+     <item row="0" column="1" colspan="3">
+      <widget class="QLineEdit" name="txtUniversidad">
+       <property name="placeholderText">
+        <string>Ej: Universidad Mayor de San Andrés</string>
+       </property>
+      </widget>
+     </item>
+     <item row="1" column="0">
+      <widget class="QLabel" name="label_9">
+       <property name="text">
+        <string>Profesión:</string>
+       </property>
+      </widget>
+     </item>
+     <item row="1" column="1" colspan="3">
+      <widget class="QLineEdit" name="txtProfesion">
+       <property name="placeholderText">
+        <string>Ej: Ingeniero de Sistemas</string>
+       </property>
+      </widget>
+     </item>
+    </layout>
+   </widget>
+  </item>
+  <item>
+   <widget class="QGroupBox" name="groupBox_3">
+    <property name="title">
+     <string>Estado</string>
+    </property>
+    <layout class="QHBoxLayout" name="horizontalLayout">
+     <item>
+      <widget class="QCheckBox" name="checkActivo">
+       <property name="text">
+        <string>Estudiante Activo</string>
+       </property>
+       <property name="checked">
+        <bool>true</bool>
+       </property>
+      </widget>
+     </item>
+     <item>
+      <spacer name="horizontalSpacer">
+       <property name="orientation">
+        <enum>Qt::Horizontal</enum>
+       </property>
+       <property name="sizeHint" stdset="0">
+        <size>
+         <width>40</width>
+         <height>20</height>
+        </size>
+       </property>
+      </spacer>
+     </item>
+    </layout>
+   </widget>
+  </item>
+  <item>
+   <widget class="QDialogButtonBox" name="buttonBox">
+    <property name="orientation">
+     <enum>Qt::Horizontal</enum>
+    </property>
+    <property name="standardButtons">
+     <set>QDialogButtonBox::Cancel|QDialogButtonBox::Ok</set>
+    </property>
+   </widget>
+  </item>
+ </layout>
+</widget>
+<resources/>
+<connections>
+ <connection>
+  <sender>buttonBox</sender>
+  <signal>accepted()</signal>
+  <receiver>EstudianteFormDialog</receiver>
+  <slot>accept()</slot>
+ </connection>
+ <connection>
+  <sender>buttonBox</sender>
+  <signal>rejected()</signal>
+  <receiver>EstudianteFormDialog</receiver>
+  <slot>reject()</slot>
+ </connection>
+</connections>
+</ui>

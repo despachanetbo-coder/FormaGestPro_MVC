@@ -1,0 +1,252 @@
+/* Estilos específicos para botones */
+
+/* Botones grandes (para acciones principales) */
+QPushButton.large {
+    font-size: 14px;
+    padding: 12px 24px;
+    min-height: 44px;
+    font-weight: 600;
+}
+
+/* Botones pequeños (para acciones secundarias) */
+QPushButton.small {
+    font-size: 12px;
+    padding: 4px 8px;
+    min-height: 28px;
+}
+
+/* Botones icono (solo icono) */
+QPushButton.icon-only {
+    background-color: transparent;
+    border: none;
+    padding: 6px;
+    border-radius: 4px;
+    min-width: 32px;
+    min-height: 32px;
+}
+
+QPushButton.icon-only:hover {
+    background-color: #e9ecef;
+}
+
+QPushButton.icon-only:pressed {
+    background-color: #dee2e6;
+}
+
+/* Botones con icono a la izquierda */
+QPushButton.icon-left {
+    text-align: left;
+    padding-left: 12px;
+}
+
+QPushButton.icon-left QLabel {
+    padding-right: 8px;
+}
+
+/* Botones con icono a la derecha */
+QPushButton.icon-right {
+    text-align: right;
+    padding-right: 12px;
+}
+
+QPushButton.icon-right QLabel {
+    padding-left: 8px;
+}
+
+/* Botones redondos (para FAB) */
+QPushButton.round {
+    border-radius: 50%;
+    min-width: 56px;
+    min-height: 56px;
+    padding: 0;
+}
+
+QPushButton.round.small {
+    min-width: 40px;
+    min-height: 40px;
+}
+
+/* Botones outline */
+QPushButton.outline {
+    background-color: transparent;
+    border: 2px solid #007bff;
+    color: #007bff;
+}
+
+QPushButton.outline:hover {
+    background-color: #007bff;
+    color: white;
+}
+
+QPushButton.outline.danger {
+    border-color: #dc3545;
+    color: #dc3545;
+}
+
+QPushButton.outline.danger:hover {
+    background-color: #dc3545;
+    color: white;
+}
+
+QPushButton.outline.success {
+    border-color: #28a745;
+    color: #28a745;
+}
+
+QPushButton.outline.success:hover {
+    background-color: #28a745;
+    color: white;
+}
+
+/* Botones con gradiente */
+QPushButton.gradient {
+    background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
+                                stop: 0 #4dabf7, stop: 1 #228be6);
+    border: none;
+}
+
+QPushButton.gradient:hover {
+    background: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1,
+                                stop: 0 #339af0, stop: 1 #1971c2);
+}
+
+/* Botones deshabilitados con estilo diferente */
+QPushButton:disabled.outline {
+    border-color: #adb5bd;
+    color: #adb5bd;
+    background-color: transparent;
+}
+
+/* Botones en barra de herramientas */
+QToolButton {
+    border-radius: 4px;
+    padding: 6px;
+}
+
+QToolButton:hover {
+    background-color: #e9ecef;
+}
+
+QToolButton:pressed {
+    background-color: #dee2e6;
+}
+
+QToolButton:checked {
+    background-color: #007bff;
+    color: white;
+}
+
+QToolButton:checked:hover {
+    background-color: #0056b3;
+}
+
+/* Estilos para botones en grupos */
+QButtonGroup QPushButton:first-child {
+    border-top-right-radius: 0;
+    border-bottom-right-radius: 0;
+    border-right: none;
+}
+
+QButtonGroup QPushButton:last-child {
+    border-top-left-radius: 0;
+    border-bottom-left-radius: 0;
+    border-left: none;
+}
+
+QButtonGroup QPushButton:not(:first-child):not(:last-child) {
+    border-radius: 0;
+    border-left: none;
+    border-right: none;
+}
+
+/* Botones principales */
+#btnPrimary {
+    background-color: #007bff;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    padding: 8px 16px;
+    font-weight: bold;
+}
+
+#btnPrimary:hover {
+    background-color: #0056b3;
+}
+
+#btnPrimary:pressed {
+    background-color: #004085;
+}
+
+#btnPrimary:disabled {
+    background-color: #6c757d;
+    color: #adb5bd;
+}
+
+/* Botones secundarios */
+#btnSecondary {
+    background-color: #6c757d;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    padding: 8px 16px;
+}
+
+#btnSecondary:hover {
+    background-color: #545b62;
+}
+
+/* Botones peligro */
+#btnDanger {
+    background-color: #dc3545;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    padding: 8px 16px;
+}
+
+#btnDanger:hover {
+    background-color: #c82333;
+}
+
+#btnDanger:pressed {
+    background-color: #bd2130;
+}
+
+/* Botones éxito */
+#btnSuccess {
+    background-color: #28a745;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    padding: 8px 16px;
+}
+
+#btnSuccess:hover {
+    background-color: #218838;
+}
+
+/* Botones advertencia */
+#btnWarning {
+    background-color: #ffc107;
+    color: #212529;
+    border: none;
+    border-radius: 4px;
+    padding: 8px 16px;
+}
+
+#btnWarning:hover {
+    background-color: #e0a800;
+}
+
+/* Botones información */
+#btnInfo {
+    background-color: #17a2b8;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    padding: 8px 16px;
+}
+
+#btnInfo:hover {
+    background-color: #138496;
+}

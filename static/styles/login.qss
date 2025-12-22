@@ -1,0 +1,183 @@
+/* Colores basados en el logo FormaGestPro - VERSIÓN MEJORADA */
+
+QWidget#login_window {
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:1,
+        stop:0 #2c5282, stop:1 #667eea);
+}
+
+#login_frame {
+    background-color: white;
+    border-radius: 12px;
+    padding: 25px;
+}
+
+#titulo {
+    color: #2c5282;  /* Azul principal del logo */
+    font-size: 26px;
+    font-weight: bold;
+    margin-bottom: 4px;
+}
+
+#subtitulo {
+    color: #4a5568;  /* Gris azulado */
+    font-size: 14px;
+    margin-bottom: 15px;
+    font-weight: 400;
+}
+
+#logo_label {
+    margin-bottom: 15px;
+}
+
+/* Labels de campos */
+#label_campo {
+    color: #2c5282;  /* Usar el mismo azul que el título para consistencia */
+    font-size: 12px;
+    font-weight: 700;
+    margin-bottom: 8px;
+    letter-spacing: 0.8px;
+    padding-left: 2px;
+}
+
+/* CAMPOS DE TEXTO CON COLOR MÁS OSCURO */
+QLineEdit {
+    padding: 12px 14px;
+    border: 1.5px solid #d1d9e6;  /* Borde más oscuro */
+    border-radius: 6px;
+    font-size: 14px;
+    background-color: #edf2f7;  /* FONDO MÁS OSCURO para mejor contraste */
+    height: 25px;
+    color: #2d3748;  /* Texto más oscuro */
+}
+
+QLineEdit:focus {
+    border: 2px solid #4299e1;
+    background-color: #e6fffa;  /* Fondo verde muy claro en focus */
+    outline: none;
+}
+
+QLineEdit::placeholder {
+    color: #718096;  /* Placeholder más oscuro */
+    font-size: 13px;
+}
+
+/* BOTÓN INICIAR SESIÓN - MÁS CONTRASTE EN HOVER */
+#btn_login {
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
+        stop:0 #3182ce, stop:1 #5a67d8);  /* Gradiente más intenso */
+    color: white;
+    padding: 12px 24px;
+    border: none;
+    border-radius: 6px;
+    font-size: 14px;
+    font-weight: 600;
+    min-height: 42px;
+    min-width: 140px;
+}
+
+#btn_login:hover {
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
+        stop:0 #2c5282, stop:1 #4c51bf);  /* MÁS OSCURO EN HOVER */
+}
+
+#btn_login:pressed {
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
+        stop:0 #2a4365, stop:1 #434190);
+}    
+
+/* BOTÓN SALIR - TONOS ROJOS Y MÁS NOTORIO */
+#btn_salir {
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
+        stop:0 #fc8181, stop:1 #f56565);  /* Gradiente rojo */
+    color: white;
+    padding: 10px 20px;
+    border: 1.5px solid #e53e3e;
+    border-radius: 5px;
+    font-size: 13px;
+    font-weight: 600;  /* Más negrita */
+    min-height: 42px;
+    min-width: 100px;
+}
+
+#btn_salir:hover {
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
+        stop:0 #f56565, stop:1 #e53e3e);  /* Rojo más intenso */
+    border-color: #c53030;
+}
+
+#btn_salir:pressed {
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
+        stop:0 #e53e3e, stop:1 #c53030);
+}
+
+/* CHECKBOX - FONDO CLARO COMO LOS TEXTBOX */
+QCheckBox {
+    font-size: 13px;
+    color: #5d6d7e;
+    spacing: 8px;
+    font-family: 'Segoe UI', Arial, sans-serif;
+    background-color: transparent;  /* Fondo transparente */
+}
+
+QCheckBox::indicator {
+    width: 18px;
+    height: 18px;
+    border: 2px solid #cbd5e0;
+    border-radius: 4px;
+    background-color: #edf2f7;  /* MISMO COLOR QUE LOS TEXTBOX */
+}
+
+QCheckBox::indicator:hover {
+    background-color: #e2e8f0;  /* Un poco más oscuro en hover */
+    border-color: #a0aec0;
+}
+
+QCheckBox::indicator:checked {
+    background-color: #4299e1;  /* Azul cuando está marcado */
+    border-color: #4299e1;
+    image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'><path fill='white' d='M10.28 2.28L4.5 8.06 1.72 5.28 0.5 6.5l4 4 6.5-6.5z'/></svg>");
+}
+
+QCheckBox::indicator:checked:hover {
+    background-color: #3182ce;
+    border-color: #3182ce;
+}
+
+/* Mensajes de error */
+#error_label {
+    color: #c53030;
+    font-size: 12px;
+    padding: 10px 12px;
+    background-color: #fed7d7;
+    border: 1px solid #fc8181;
+    border-radius: 5px;
+    margin: 12px 0;
+    font-family: 'Segoe UI', Arial, sans-serif;
+}
+
+/* Footer */
+#footer_label {
+    color: #a0aec0;
+    font-size: 11px;
+    font-family: 'Segoe UI', Arial, sans-serif;
+    padding-top: 15px;
+    margin-top: 15px;
+    border-top: 1px solid #e2e8f0;
+}
+
+/* Separadores */
+.separator {
+    height: 1px;
+    background-color: #e2e8f0;
+    margin: 20px 0;
+}
+
+/* Ajustes para tamaño 500x700 */
+#login_frame {
+    min-height: 600px;
+}
+
+/* Mejorar visibilidad general */
+* {
+    font-family: 'Segoe UI', 'Roboto', Arial, sans-serif;
+}

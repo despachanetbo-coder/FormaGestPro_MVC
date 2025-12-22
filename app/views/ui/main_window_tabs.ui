@@ -1,0 +1,146 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>MainWindow</class>
+ <widget class="QMainWindow" name="MainWindow">
+  <property name="geometry">
+   <rect>
+    <x>0</x>
+    <y>0</y>
+    <width>1200</width>
+    <height>800</height>
+   </rect>
+  </property>
+  <property name="windowTitle">
+   <string>FormaGestPro - Sistema de Gestión Académica</string>
+  </property>
+  <widget class="QWidget" name="centralwidget">
+   <layout class="QVBoxLayout" name="verticalLayout">
+    <item>
+     <widget class="QTabWidget" name="tabWidget">
+      <property name="currentIndex">
+       <number>5</number>
+      </property>
+      <widget class="QWidget" name="tabDashboard">
+       <attribute name="title">
+        <string>🏠 Inicio</string>
+       </attribute>
+      </widget>
+      <widget class="QWidget" name="tabEstudiantes">
+       <attribute name="title">
+        <string>👤 Estudiantes</string>
+       </attribute>
+      </widget>
+      <widget class="QWidget" name="tabDocentes">
+       <attribute name="title">
+        <string>👨‍🏫 Docentes</string>
+       </attribute>
+      </widget>
+      <widget class="QWidget" name="tabProgramas">
+       <attribute name="title">
+        <string>📚 Programas</string>
+       </attribute>
+      </widget>
+      <widget class="QWidget" name="tabFinanciero">
+       <attribute name="title">
+        <string>💰 Financiero</string>
+       </attribute>
+      </widget>
+      <widget class="QWidget" name="tabAyuda">
+       <attribute name="title">
+        <string>🔧 Ayuda</string>
+       </attribute>
+      </widget>
+     </widget>
+    </item>
+   </layout>
+  </widget>
+  <widget class="QMenuBar" name="menubar">
+   <property name="geometry">
+    <rect>
+     <x>0</x>
+     <y>0</y>
+     <width>1200</width>
+     <height>22</height>
+    </rect>
+   </property>
+   <widget class="QMenu" name="menuArchivo">
+    <property name="title">
+     <string>&amp;Archivo</string>
+    </property>
+    <addaction name="actionSalir"/>
+   </widget>
+   <widget class="QMenu" name="menuGestion">
+    <property name="title">
+     <string>&amp;Gestión</string>
+    </property>
+    <addaction name="actionEstudiantes"/>
+    <addaction name="actionDocentes"/>
+    <addaction name="actionProgramas"/>
+    <addaction name="actionFinanciero"/>
+   </widget>
+   <widget class="QMenu" name="menuAyuda">
+    <property name="title">
+     <string>&amp;Ayuda</string>
+    </property>
+    <addaction name="actionAcerca_de"/>
+    <addaction name="actionManual"/>
+   </widget>
+   <addaction name="menuArchivo"/>
+   <addaction name="menuGestion"/>
+   <addaction name="menuAyuda"/>
+  </widget>
+  <widget class="QStatusBar" name="statusbar"/>
+  <action name="actionSalir">
+   <property name="text">
+    <string>&amp;Salir</string>
+   </property>
+   <property name="shortcut">
+    <string>Ctrl+Q</string>
+   </property>
+  </action>
+  <action name="actionEstudiantes">
+   <property name="text">
+    <string>&amp;Estudiantes</string>
+   </property>
+   <property name="shortcut">
+    <string>Ctrl+E</string>
+   </property>
+  </action>
+  <action name="actionDocentes">
+   <property name="text">
+    <string>&amp;Docentes/Tutores</string>
+   </property>
+   <property name="shortcut">
+    <string>Ctrl+D</string>
+   </property>
+  </action>
+  <action name="actionProgramas">
+   <property name="text">
+    <string>&amp;Programas Académicos</string>
+   </property>
+   <property name="shortcut">
+    <string>Ctrl+P</string>
+   </property>
+  </action>
+  <action name="actionFinanciero">
+   <property name="text">
+    <string>&amp;Financiero</string>
+   </property>
+   <property name="shortcut">
+    <string>Ctrl+F</string>
+   </property>
+  </action>
+  <action name="actionAcerca_de">
+   <property name="text">
+    <string>&amp;Acerca de</string>
+   </property>
+  </action>
+  <action name="actionManual">
+   <property name="text">
+    <string>&amp;Manual de usuario</string>
+   </property>
+  </action>
+ </widget>
+ <resources/>
+ <connections/>
+</ui>

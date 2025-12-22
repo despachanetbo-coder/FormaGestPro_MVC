@@ -1,0 +1,161 @@
+/* Tabla de estudiantes */
+QTableView#estudiantesTable {
+    font-size: 13px;
+}
+
+QTableView#estudiantesTable::item {
+    padding: 4px;
+}
+
+/* Tabla con filas alternas */
+QTableView.alternating {
+    alternate-background-color: #F5F5F5;
+}
+
+/* Tabla pequeña para resumen */
+QTableView.compact QHeaderView::section {
+    padding: 2px 4px;
+    font-size: 12px;
+}
+
+/* Estilos específicos para tablas y QTableWidget */
+
+/* Tabla general */
+QTableWidget {
+    background-color: white;
+    alternate-background-color: #f8f9fa;
+    gridline-color: #dee2e6;
+    selection-background-color: #007bff;
+    selection-color: white;
+    border: 1px solid #dee2e6;
+    border-radius: 4px;
+}
+
+QTableView {
+    background-color: white;
+    alternate-background-color: #f8f9fa;
+    gridline-color: #dee2e6;
+    selection-background-color: #007bff;
+    selection-color: white;
+}
+
+/* Encabezados */
+QHeaderView::section {
+    background-color: #e9ecef;
+    padding: 8px;
+    border: none;
+    border-right: 1px solid #dee2e6;
+    border-bottom: 1px solid #dee2e6;
+    font-weight: bold;
+    font-size: 12px;
+    color: #495057;
+}
+
+QHeaderView::section:last {
+    border-right: none;
+}
+
+QHeaderView::section:hover {
+    background-color: #dee2e6;
+}
+
+/* Filas */
+QTableWidget::item {
+    padding: 6px;
+    border-bottom: 1px solid #f1f3f4;
+}
+
+QTableWidget::item:selected {
+    background-color: #007bff;
+    color: white;
+}
+
+QTableWidget::item:hover {
+    background-color: #f8f9fa;
+}
+
+/* Filas alternas */
+QTableWidget::item:alternate {
+    background-color: #f8f9fa;
+}
+
+/* Estado de programas en tabla - COLORES DE FONDO */
+QTableWidget::item[background-color="#c8e6c9"] {
+    background-color: #c8e6c9;
+    color: #256029;
+}
+
+QTableWidget::item[background-color="#fff3cd"] {
+    background-color: #fff3cd;
+    color: #856404;
+}
+
+QTableWidget::item[background-color="#f8d7da"] {
+    background-color: #f8d7da;
+    color: #721c24;
+}
+
+/* CLASES CSS para estados (método más robusto) */
+.estado-activo {
+    background-color: #d4edda;
+    color: #155724;
+}
+
+.estado-finalizado {
+    background-color: #cce5ff;
+    color: #004085;
+}
+
+.estado-cancelado {
+    background-color: #f8d7da;
+    color: #721c24;
+}
+
+.estado-en_diseno {
+    background-color: #fff3cd;
+    color: #856404;
+}
+
+/* Estilos específicos para tabla de programas */
+#tablaProgramas {
+    font-size: 13px;
+}
+
+#tablaProgramas QTableWidget::item {
+    padding: 8px;
+}
+
+/* Botones dentro de celdas */
+QTableWidget QPushButton {
+    padding: 4px 8px;
+    font-size: 11px;
+    border-radius: 3px;
+    margin: 2px;
+}
+
+QTableWidget QPushButton:hover {
+    opacity: 0.9;
+}
+
+/* Barra de desplazamiento */
+QScrollBar:vertical {
+    border: none;
+    background-color: #f8f9fa;
+    width: 12px;
+    border-radius: 6px;
+}
+
+QScrollBar::handle:vertical {
+    background-color: #adb5bd;
+    border-radius: 6px;
+    min-height: 30px;
+}
+
+QScrollBar::handle:vertical:hover {
+    background-color: #6c757d;
+}
+
+QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
+    border: none;
+    background: none;
+}

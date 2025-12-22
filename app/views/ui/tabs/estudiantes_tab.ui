@@ -1,0 +1,437 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>EstudiantesTab</class>
+ <widget class="QWidget" name="EstudiantesTab">
+  <property name="geometry">
+   <rect>
+    <x>0</x>
+    <y>0</y>
+    <width>1200</width>
+    <height>700</height>
+   </rect>
+  </property>
+  <property name="windowTitle">
+   <string>Gestión de Estudiantes</string>
+  </property>
+  <layout class="QVBoxLayout" name="verticalLayout">
+   <item>
+    <widget class="QGroupBox" name="groupBoxBusqueda">
+     <property name="title">
+      <string>🔍 Búsqueda de Estudiantes</string>
+     </property>
+     <layout class="QHBoxLayout" name="horizontalLayoutBusqueda">
+      <item>
+       <widget class="QGroupBox" name="groupBoxBuscarCI">
+        <property name="title">
+         <string>Buscar por CI</string>
+        </property>
+        <layout class="QHBoxLayout" name="horizontalLayoutCI">
+         <item>
+          <widget class="QLineEdit" name="txtBuscarCINumero">
+           <property name="placeholderText">
+            <string>Número de CI</string>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QComboBox" name="comboBuscarExpedicion">
+           <item>
+            <property name="text">
+             <string>Todas</string>
+            </property>
+           </item>
+           <item>
+            <property name="text">
+             <string>BE</string>
+            </property>
+           </item>
+           <item>
+            <property name="text">
+             <string>CH</string>
+            </property>
+           </item>
+           <item>
+            <property name="text">
+             <string>CB</string>
+            </property>
+           </item>
+           <item>
+            <property name="text">
+             <string>LP</string>
+            </property>
+           </item>
+           <item>
+            <property name="text">
+             <string>OR</string>
+            </property>
+           </item>
+           <item>
+            <property name="text">
+             <string>PD</string>
+            </property>
+           </item>
+           <item>
+            <property name="text">
+             <string>PT</string>
+            </property>
+           </item>
+           <item>
+            <property name="text">
+             <string>SC</string>
+            </property>
+           </item>
+           <item>
+            <property name="text">
+             <string>TJ</string>
+            </property>
+           </item>
+           <item>
+            <property name="text">
+             <string>EX</string>
+            </property>
+           </item>
+          </widget>
+         </item>
+         <item>
+          <widget class="QPushButton" name="btnBuscarCI">
+           <property name="text">
+            <string>Buscar por CI</string>
+           </property>
+           <property name="icon">
+            <iconset resource="../../resources/icons.qrc">
+             <normaloff>:/icons/search.png</normaloff>:/icons/search.png</iconset>
+           </property>
+          </widget>
+         </item>
+        </layout>
+       </widget>
+      </item>
+      <item>
+       <widget class="QGroupBox" name="groupBoxBuscarNombre">
+        <property name="title">
+         <string>Buscar por Nombre</string>
+        </property>
+        <layout class="QHBoxLayout" name="horizontalLayoutNombre">
+         <item>
+          <widget class="QLineEdit" name="txtBuscarNombre">
+           <property name="placeholderText">
+            <string>Nombre o apellido</string>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QPushButton" name="btnBuscarNombre">
+           <property name="text">
+            <string>Buscar por Nombre</string>
+           </property>
+           <property name="icon">
+            <iconset resource="../../resources/icons.qrc">
+             <normaloff>:/icons/search.png</normaloff>:/icons/search.png</iconset>
+           </property>
+          </widget>
+         </item>
+        </layout>
+       </widget>
+      </item>
+      <item>
+       <spacer name="horizontalSpacerBusqueda">
+        <property name="orientation">
+         <enum>Qt::Horizontal</enum>
+        </property>
+        <property name="sizeHint" stdset="0">
+         <size>
+          <width>40</width>
+          <height>20</height>
+         </size>
+        </property>
+       </spacer>
+      </item>
+      <item>
+       <widget class="QPushButton" name="btnNuevoEstudiante">
+        <property name="text">
+         <string>➕ Nuevo Estudiante</string>
+        </property>
+        <property name="icon">
+         <iconset resource="../../resources/icons.qrc">
+          <normaloff>:/icons/add.png</normaloff>:/icons/add.png</iconset>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QPushButton" name="btnMostrarTodos">
+        <property name="text">
+         <string>Mostrar Todos</string>
+        </property>
+        <property name="icon">
+         <iconset resource="../../resources/icons.qrc">
+          <normaloff>:/icons/list.png</normaloff>:/icons/list.png</iconset>
+        </property>
+       </widget>
+      </item>
+     </layout>
+    </widget>
+   </item>
+   <item>
+    <widget class="QFrame" name="frameControles">
+     <property name="frameShape">
+      <enum>QFrame::StyledPanel</enum>
+     </property>
+     <property name="frameShadow">
+      <enum>QFrame::Raised</enum>
+     </property>
+     <layout class="QHBoxLayout" name="horizontalLayoutControles">
+      <item>
+       <widget class="QLabel" name="labelContador">
+        <property name="text">
+         <string>Mostrando 0-0 de 0 estudiantes</string>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <spacer name="horizontalSpacerControles">
+        <property name="orientation">
+         <enum>Qt::Horizontal</enum>
+        </property>
+        <property name="sizeHint" stdset="0">
+         <size>
+          <width>40</width>
+          <height>20</height>
+         </size>
+        </property>
+       </spacer>
+      </item>
+      <item>
+       <widget class="QLabel" name="labelRegistrosPagina">
+        <property name="text">
+         <string>Registros por página:</string>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QComboBox" name="comboRegistrosPagina">
+        <item>
+         <property name="text">
+          <string>10</string>
+         </property>
+        </item>
+        <item>
+         <property name="text">
+          <string>25</string>
+         </property>
+        </item>
+        <item>
+         <property name="text">
+          <string>50</string>
+         </property>
+        </item>
+        <item>
+         <property name="text">
+          <string>100</string>
+         </property>
+        </item>
+        <item>
+         <property name="text">
+          <string>Todos</string>
+         </property>
+        </item>
+       </widget>
+      </item>
+      <item>
+       <widget class="QLabel" name="labelPaginaActual">
+        <property name="text">
+         <string>Página 1 de 1</string>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QPushButton" name="btnPrimeraPagina">
+        <property name="text">
+         <string>⏮️</string>
+        </property>
+        <property name="toolTip">
+         <string>Primera página</string>
+        </property>
+        <property name="maximumSize">
+         <size>
+          <width>40</width>
+          <height>16777215</height>
+         </size>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QPushButton" name="btnPaginaAnterior">
+        <property name="text">
+         <string>◀️</string>
+        </property>
+        <property name="toolTip">
+         <string>Página anterior</string>
+        </property>
+        <property name="maximumSize">
+         <size>
+          <width>40</width>
+          <height>16777215</height>
+         </size>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QPushButton" name="btnPaginaSiguiente">
+        <property name="text">
+         <string>▶️</string>
+        </property>
+        <property name="toolTip">
+         <string>Página siguiente</string>
+        </property>
+        <property name="maximumSize">
+         <size>
+          <width>40</width>
+          <height>16777215</height>
+         </size>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QPushButton" name="btnUltimaPagina">
+        <property name="text">
+         <string>⏭️</string>
+        </property>
+        <property name="toolTip">
+         <string>Última página</string>
+        </property>
+        <property name="maximumSize">
+         <size>
+          <width>40</width>
+          <height>16777215</height>
+         </size>
+        </property>
+       </widget>
+      </item>
+     </layout>
+    </widget>
+   </item>
+   <item>
+    <widget class="QTableWidget" name="tableEstudiantes">
+     <property name="editTriggers">
+      <set>QAbstractItemView::NoEditTriggers</set>
+     </property>
+     <property name="selectionMode">
+      <enum>QAbstractItemView::SingleSelection</enum>
+     </property>
+     <property name="selectionBehavior">
+      <enum>QAbstractItemView::SelectRows</enum>
+     </property>
+     <attribute name="horizontalHeaderStretchLastSection">
+      <bool>true</bool>
+     </attribute>
+     <column>
+      <property name="text">
+       <string>ID</string>
+      </property>
+     </column>
+     <column>
+      <property name="text">
+       <string>CI</string>
+      </property>
+     </column>
+     <column>
+      <property name="text">
+       <string>Nombre Completo</string>
+      </property>
+     </column>
+     <column>
+      <property name="text">
+       <string>Email</string>
+      </property>
+     </column>
+     <column>
+      <property name="text">
+       <string>Teléfono</string>
+      </property>
+     </column>
+     <column>
+      <property name="text">
+       <string>Universidad</string>
+      </property>
+     </column>
+     <column>
+      <property name="text">
+       <string>Profesión</string>
+      </property>
+     </column>
+     <column>
+      <property name="text">
+       <string>Estado</string>
+      </property>
+     </column>
+     <column>
+      <property name="text">
+       <string>Acciones</string>
+      </property>
+     </column>
+    </widget>
+   </item>
+   <item>
+    <widget class="QFrame" name="frameAccionesRapidas">
+     <property name="frameShape">
+      <enum>QFrame::StyledPanel</enum>
+     </property>
+     <property name="frameShadow">
+      <enum>QFrame::Raised</enum>
+     </property>
+     <layout class="QHBoxLayout" name="horizontalLayoutAcciones">
+      <item>
+       <widget class="QLabel" name="labelEstadisticas">
+        <property name="text">
+         <string>Total estudiantes: 0 | Activos: 0 | Inactivos: 0</string>
+        </property>
+        <property name="styleSheet">
+         <string notr="true">font-weight: bold; color: #2c3e50;</string>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <spacer name="horizontalSpacerAcciones">
+        <property name="orientation">
+         <enum>Qt::Horizontal</enum>
+        </property>
+        <property name="sizeHint" stdset="0">
+         <size>
+          <width>40</width>
+          <height>20</height>
+         </size>
+        </property>
+       </spacer>
+      </item>
+      <item>
+       <widget class="QPushButton" name="btnExportarExcel">
+        <property name="text">
+         <string>📊 Exportar Excel</string>
+        </property>
+        <property name="icon">
+         <iconset resource="../../resources/icons.qrc">
+          <normaloff>:/icons/excel.png</normaloff>:/icons/excel.png</iconset>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QPushButton" name="btnActualizar">
+        <property name="text">
+         <string>🔄 Actualizar</string>
+        </property>
+        <property name="icon">
+         <iconset resource="../../resources/icons.qrc">
+          <normaloff>:/icons/refresh.png</normaloff>:/icons/refresh.png</iconset>
+        </property>
+       </widget>
+      </item>
+     </layout>
+    </widget>
+   </item>
+  </layout>
+ </widget>
+ <resources>
+  <include location="../../resources/icons.qrc"/>
+ </resources>
+ <connections/>
+</ui>

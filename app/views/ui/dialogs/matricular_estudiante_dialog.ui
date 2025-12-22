@@ -1,0 +1,456 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>MatricularEstudianteDialog</class>
+ <widget class="QDialog" name="MatricularEstudianteDialog">
+  <property name="geometry">
+   <rect>
+    <x>0</x>
+    <y>0</y>
+    <width>800</width>
+    <height>650</height>
+   </rect>
+  </property>
+  <property name="windowTitle">
+   <string>🎓 Matricular Estudiante</string>
+  </property>
+  <layout class="QVBoxLayout" name="verticalLayout">
+   <item>
+    <widget class="QLabel" name="lblEstudiante">
+     <property name="text">
+      <string>Estudiante: [Nombre]</string>
+     </property>
+     <property name="alignment">
+      <set>Qt::AlignCenter</set>
+     </property>
+     <property name="wordWrap">
+      <bool>true</bool>
+     </property>
+     <property name="styleSheet">
+      <string notr="true">font-weight: bold; background-color: #e3f2fd; padding: 10px; border-radius: 5px;</string>
+     </property>
+    </widget>
+   </item>
+   
+   <!-- SECCIÓN 1: INFORMACIÓN DEL PROGRAMA -->
+   <item>
+    <widget class="QGroupBox" name="groupBoxPrograma">
+     <property name="title">
+      <string>📚 Programa Académico</string>
+     </property>
+     <layout class="QGridLayout" name="gridLayoutPrograma">
+      <item row="0" column="0">
+       <widget class="QLabel" name="lblPrograma">
+        <property name="text">
+         <string>Programa:*</string>
+        </property>
+       </widget>
+      </item>
+      <item row="0" column="1" colspan="3">
+       <widget class="QComboBox" name="comboPrograma">
+        <property name="placeholderText">
+         <string>Seleccione un programa...</string>
+        </property>
+       </widget>
+      </item>
+      <item row="1" column="0">
+       <widget class="QLabel" name="lblModalidad">
+        <property name="text">
+         <string>Modalidad de Pago:*</string>
+        </property>
+       </widget>
+      </item>
+      <item row="1" column="1">
+       <widget class="QComboBox" name="comboModalidadPago">
+        <item>
+         <property name="text">
+          <string>Seleccione...</string>
+         </property>
+        </item>
+        <item>
+         <property name="text">
+          <string>Contado</string>
+         </property>
+        </item>
+        <item>
+         <property name="text">
+          <string>Cuotas (2 meses)</string>
+         </property>
+        </item>
+        <item>
+         <property name="text">
+          <string>Cuotas (3 meses)</string>
+         </property>
+        </item>
+        <item>
+         <property name="text">
+          <string>Cuotas (4 meses)</string>
+         </property>
+        </item>
+        <item>
+         <property name="text">
+          <string>Cuotas (6 meses)</string>
+         </property>
+        </item>
+       </widget>
+      </item>
+      <item row="2" column="0">
+       <widget class="QLabel" name="lblFechaInicio">
+        <property name="text">
+         <string>Fecha de Inicio:*</string>
+        </property>
+       </widget>
+      </item>
+      <item row="2" column="1">
+       <widget class="QDateEdit" name="dateFechaInicio">
+        <property name="calendarPopup">
+         <bool>true</bool>
+        </property>
+        <property name="date">
+         <date>
+          <year>2024</year>
+          <month>1</month>
+          <day>15</day>
+         </date>
+        </property>
+       </widget>
+      </item>
+     </layout>
+    </widget>
+   </item>
+   
+   <!-- SECCIÓN 2: DETALLES DEL PROGRAMA -->
+   <item>
+    <widget class="QGroupBox" name="groupBoxDetalles">
+     <property name="title">
+      <string>📊 Detalles del Programa</string>
+     </property>
+     <property name="enabled">
+      <bool>false</bool>
+     </property>
+     <layout class="QVBoxLayout" name="verticalLayoutDetalles">
+      <item>
+       <widget class="QLabel" name="lblDetallesPrograma">
+        <property name="text">
+         <string>Seleccione un programa para ver detalles</string>
+        </property>
+        <property name="alignment">
+         <set>Qt::AlignCenter</set>
+        </property>
+        <property name="wordWrap">
+         <bool>true</bool>
+        </property>
+       </widget>
+      </item>
+     </layout>
+    </widget>
+   </item>
+   
+   <!-- SECCIÓN 3: CONFIGURACIÓN DE CUOTAS (Visible solo si se selecciona Cuotas) -->
+   <item>
+    <widget class="QGroupBox" name="groupBoxCuotas">
+     <property name="title">
+      <string>💰 Configuración de Cuotas</string>
+     </property>
+     <property name="visible">
+      <bool>false</bool>
+     </property>
+     <layout class="QGridLayout" name="gridLayoutCuotas">
+      <item row="0" column="0">
+       <widget class="QLabel" name="lblNumCuotas">
+        <property name="text">
+         <string>Número de Cuotas:</string>
+        </property>
+       </widget>
+      </item>
+      <item row="0" column="1">
+       <widget class="QSpinBox" name="spinNumCuotas">
+        <property name="minimum">
+         <number>2</number>
+        </property>
+        <property name="maximum">
+         <number>12</number>
+        </property>
+        <property name="value">
+         <number>3</number>
+        </property>
+       </widget>
+      </item>
+      <item row="1" column="0">
+       <widget class="QLabel" name="lblMontoCuota">
+        <property name="text">
+         <string>Monto por Cuota:</string>
+        </property>
+       </widget>
+      </item>
+      <item row="1" column="1">
+       <widget class="QLabel" name="lblMontoCuotaValor">
+        <property name="text">
+         <string>$0.00</string>
+        </property>
+        <property name="styleSheet">
+         <string notr="true">font-weight: bold; color: #2c3e50;</string>
+        </property>
+       </widget>
+      </item>
+      <item row="2" column="0" colspan="2">
+       <widget class="QPushButton" name="btnGenerarCalendario">
+        <property name="text">
+         <string>📅 Generar Calendario de Pagos</string>
+        </property>
+       </widget>
+      </item>
+     </layout>
+    </widget>
+   </item>
+   
+   <!-- SECCIÓN 4: RESUMEN FINAL -->
+   <item>
+    <widget class="QGroupBox" name="groupBoxResumen">
+     <property name="title">
+      <string>🧮 Resumen de la Matrícula</string>
+     </property>
+     <layout class="QGridLayout" name="gridLayoutResumen">
+      <item row="0" column="0">
+       <widget class="QLabel" name="lblCostoBase">
+        <property name="text">
+         <string>Costo Base:</string>
+        </property>
+       </widget>
+      </item>
+      <item row="0" column="1">
+       <widget class="QLabel" name="lblCostoBaseValor">
+        <property name="text">
+         <string>$0.00</string>
+        </property>
+       </widget>
+      </item>
+      <item row="1" column="0">
+       <widget class="QLabel" name="lblDescuento">
+        <property name="text">
+         <string>Descuento:</string>
+        </property>
+       </widget>
+      </item>
+      <item row="1" column="1">
+       <widget class="QLabel" name="lblDescuentoValor">
+        <property name="text">
+         <string>$0.00 (0%)</string>
+        </property>
+        <property name="styleSheet">
+         <string notr="true">color: #27ae60;</string>
+        </property>
+       </widget>
+      </item>
+      <item row="2" column="0">
+       <widget class="QLabel" name="lblTotalPagar">
+        <property name="text">
+         <string>Total a Pagar:</string>
+        </property>
+        <property name="styleSheet">
+         <string notr="true">font-weight: bold;</string>
+        </property>
+       </widget>
+      </item>
+      <item row="2" column="1">
+       <widget class="QLabel" name="lblTotalPagarValor">
+        <property name="text">
+         <string>$0.00</string>
+        </property>
+        <property name="styleSheet">
+         <string notr="true">font-weight: bold; color: #e74c3c; font-size: 14px;</string>
+        </property>
+       </widget>
+      </item>
+      <item row="3" column="0">
+       <widget class="QLabel" name="lblPagoInicial">
+        <property name="text">
+         <string>Pago Inicial:</string>
+        </property>
+       </widget>
+      </item>
+      <item row="3" column="1">
+       <widget class="QLabel" name="lblPagoInicialValor">
+        <property name="text">
+         <string>$0.00</string>
+        </property>
+        <property name="styleSheet">
+         <string notr="true">font-weight: bold; color: #3498db;</string>
+        </property>
+       </widget>
+      </item>
+     </layout>
+    </widget>
+   </item>
+   
+   <!-- SECCIÓN 5: TABLA DE CUOTAS GENERADAS -->
+   <item>
+    <widget class="QGroupBox" name="groupBoxCalendario">
+     <property name="title">
+      <string>📅 Calendario de Pagos</string>
+     </property>
+     <property name="visible">
+      <bool>false</bool>
+     </property>
+     <layout class="QVBoxLayout" name="verticalLayoutCalendario">
+      <item>
+       <widget class="QTableWidget" name="tableCuotas">
+        <property name="rowCount">
+         <number>0</number>
+        </property>
+        <property name="columnCount">
+         <number>4</number>
+        </property>
+        <column>
+         <property name="text">
+          <string>#</string>
+         </property>
+        </column>
+        <column>
+         <property name="text">
+          <string>Fecha Vencimiento</string>
+         </property>
+        </column>
+        <column>
+         <property name="text">
+          <string>Monto</string>
+         </property>
+        </column>
+        <column>
+         <property name="text">
+          <string>Estado</string>
+         </property>
+        </column>
+       </widget>
+      </item>
+     </layout>
+    </widget>
+   </item>
+   
+   <!-- SECCIÓN 6: OBSERVACIONES -->
+   <item>
+    <widget class="QGroupBox" name="groupBoxObservaciones">
+     <property name="title">
+      <string>📝 Observaciones</string>
+     </property>
+     <layout class="QVBoxLayout" name="verticalLayoutObservaciones">
+      <item>
+       <widget class="QTextEdit" name="txtObservaciones">
+        <property name="placeholderText">
+         <string>Ingrese observaciones adicionales si es necesario...</string>
+        </property>
+        <property name="maximumHeight">
+         <number>80</number>
+        </property>
+       </widget>
+      </item>
+     </layout>
+    </widget>
+   </item>
+   
+   <!-- SECCIÓN 7: BOTONES DE ACCIÓN -->
+   <item>
+    <layout class="QHBoxLayout" name="horizontalLayoutBotones">
+     <item>
+      <widget class="QPushButton" name="btnCalcular">
+       <property name="text">
+        <string>🧮 Calcular</string>
+       </property>
+       <property name="styleSheet">
+        <string notr="true">QPushButton {
+    background-color: #3498db;
+    color: white;
+    padding: 10px 20px;
+    border-radius: 5px;
+    font-weight: bold;
+}
+QPushButton:hover {
+    background-color: #2980b9;
+}</string>
+       </property>
+      </widget>
+     </item>
+     <item>
+      <spacer name="horizontalSpacer">
+       <property name="orientation">
+        <enum>Qt::Horizontal</enum>
+       </property>
+       <property name="sizeHint" stdset="0">
+        <size>
+         <width>40</width>
+         <height>20</height>
+        </size>
+       </property>
+      </spacer>
+     </item>
+     <item>
+      <widget class="QPushButton" name="btnImprimir">
+       <property name="text">
+        <string>🖨️ Imprimir</string>
+       </property>
+       <property name="enabled">
+        <bool>false</bool>
+       </property>
+       <property name="styleSheet">
+        <string notr="true">QPushButton {
+    background-color: #95a5a6;
+    color: white;
+    padding: 10px 20px;
+    border-radius: 5px;
+}
+QPushButton:hover {
+    background-color: #7f8c8d;
+}</string>
+       </property>
+      </widget>
+     </item>
+     <item>
+      <widget class="QPushButton" name="btnMatricular">
+       <property name="text">
+        <string>🎓 Matricular</string>
+       </property>
+       <property name="enabled">
+        <bool>false</bool>
+       </property>
+       <property name="styleSheet">
+        <string notr="true">QPushButton {
+    background-color: #27ae60;
+    color: white;
+    padding: 10px 30px;
+    border-radius: 5px;
+    font-weight: bold;
+    font-size: 14px;
+}
+QPushButton:hover {
+    background-color: #219653;
+}
+QPushButton:disabled {
+    background-color: #95a5a6;
+}</string>
+       </property>
+      </widget>
+     </item>
+     <item>
+      <widget class="QPushButton" name="btnCancelar">
+       <property name="text">
+        <string>❌ Cancelar</string>
+       </property>
+       <property name="styleSheet">
+        <string notr="true">QPushButton {
+    background-color: #e74c3c;
+    color: white;
+    padding: 10px 20px;
+    border-radius: 5px;
+}
+QPushButton:hover {
+    background-color: #c0392b;
+}</string>
+       </property>
+      </widget>
+     </item>
+    </layout>
+   </item>
+  </layout>
+ </widget>
+ <resources/>
+ <connections/>
+</ui>

@@ -1,0 +1,49 @@
+/* ===== TEMA OPTIMIZADO - SIN DUPLICADOS ===== */
+
+/* 1. SELECTORES DE WIDGET PRINCIPALES (una vez cada uno) */
+QMainWindow, QWidget {
+    /* Propiedades globales */
+}
+
+/* 2. COMPONENTES DE FORMULARIO (agrupados lógicamente) */
+QLineEdit, QTextEdit, QPlainTextEdit {
+    /* Propiedades comunes a inputs de texto */
+}
+
+QComboBox, QSpinBox, QDoubleSpinBox {
+    /* Propiedades comunes a selects y spinners */
+}
+
+/* 3. BOTONES (todos juntos, con variantes específicas) */
+QPushButton {
+    /* Estilo base para todos los botones */
+}
+
+#btnPrimary, #btnSave {
+    /* Botones de acción principal */
+}
+
+#btnCancel, #btnDanger {
+    /* Botones secundarios y de peligro */
+}
+
+/* 4. ESTADOS (agrupados por tipo de interacción) */
+/* Estados hover - TODOS los hover juntos */
+QLineEdit:hover, QComboBox:hover, QPushButton:hover {
+    /* Comportamiento común al hover */
+}
+
+/* Estados focus - TODOS los focus juntos */
+QLineEdit:focus, QComboBox:focus {
+    /* Comportamiento común al recibir foco */
+}
+
+/* 5. COMPONENTES ESPECÍFICOS (uno por cada tipo) */
+#sidebar, #navList, QGroupBox {
+    /* Componentes con ID o uso específico */
+}
+
+/* 6. SUBCONTROLES (separados por tipo) */
+QComboBox::drop-down, QSpinBox::up-button {
+    /* Partes internas de widgets complejos */
+}

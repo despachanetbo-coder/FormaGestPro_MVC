@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+    <class>GestionEstudiantesWidget</class>
+    <widget class="QWidget" name="GestionEstudiantesWidget">
+        <layout class="QVBoxLayout" name="verticalLayout">
+            <item>
+                <widget class="QLabel" name="labelTitulo">
+                    <property name="text">
+                        <string>👤 GESTIÓN DE ESTUDIANTES</string>
+                    </property>
+                    <property name="font">
+                        <font>
+                            <family>Segoe UI</family>
+                            <pointsize>18</pointsize>
+                            <weight>75</weight>
+                            <bold>true</bold>
+                        </font>
+                    </property>
+                    <property name="alignment">
+                        <set>Qt::AlignCenter</set>
+                    </property>
+                </widget>
+            </item>
+            <item>
+                <widget class="QTabWidget" name="tabWidget">
+                    <widget class="QWidget" name="tabRegistrar">
+                        <attribute name="title">
+                            <string>➕ Registrar</string>
+                        </attribute>
+                    </widget>
+                    <widget class="QWidget" name="tabListar">
+                        <attribute name="title">
+                            <string>📋 Listar</string>
+                        </attribute>
+                    </widget>
+                    <widget class="QWidget" name="tabBuscarCI">
+                        <attribute name="title">
+                            <string>🔍 Buscar por CI</string>
+                        </attribute>
+                    </widget>
+                    <widget class="QWidget" name="tabBuscarNombre">
+                        <attribute name="title">
+                            <string>👤 Buscar por Nombre</string>
+                        </attribute>
+                    </widget>
+                    <widget class="QWidget" name="tabEstadisticas">
+                        <attribute name="title">
+                            <string>📊 Estadísticas</string>
+                        </attribute>
+                    </widget>
+                </widget>
+            </item>
+        </layout>
+    </widget>
+    <resources/>
+    <connections/>
+</ui>

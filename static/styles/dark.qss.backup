@@ -1,0 +1,456 @@
+/* static/styles/dark.qss - SOLO COLORES PARA TEMA OSCURO */
+
+/* ===== ESTILOS BASE ===== */
+QMainWindow
+    background-color: #1a202c;
+    color: #e2e8f0;
+}
+
+QWidget
+    background-color: #1a202c;
+    color: #e2e8f0;
+}
+
+/* ===== TEXTO ===== */
+QLabel
+    color: #e2e8f0;
+}
+
+QLabel.field-label
+    color: #cbd5e0;
+}
+
+QLabel.dialog-title
+    color: #f7fafc;
+}
+
+/* ===== INPUTS ===== */
+QLineEdit, QTextEdit, QPlainTextEdit
+    background-color: #2d3748;
+    color: #e2e8f0;
+    border-color: #4a5568;
+    selection-background-color: #63b3ed;
+    selection-color: #1a202c;
+}
+
+QLineEdit:focus, QTextEdit:focus, QPlainTextEdit:focus
+    border-color: #63b3ed;
+    background-color: #2d3748;
+}
+
+QLineEdit:hover, QTextEdit:hover, QPlainTextEdit:hover
+    border-color: #90cdf4;
+    background-color: #374151;
+}
+
+/* ===== COMBOBOX ===== */
+QComboBox
+    background-color: #2d3748;
+    color: #e2e8f0;
+    border-color: #4a5568;
+}
+
+QComboBox:hover
+    border-color: #90cdf4;
+    background-color: #374151;
+}
+
+QComboBox:focus
+    border-color: #63b3ed;
+}
+
+QComboBox::drop-down
+    border-left-color: #4a5568;
+    background-color: #4a5568;
+}
+
+QComboBox::down-arrow
+    border-top-color: #cbd5e0;
+}
+
+QComboBox::down-arrow:on
+    border-bottom-color: #63b3ed;
+}
+
+QComboBox::drop-down:hover
+    background-color: #718096;
+}
+
+QComboBox QAbstractItemView
+    background-color: #2d3748;
+    color: #e2e8f0;
+    border-color: #4a5568;
+    selection-background-color: #63b3ed;
+    selection-color: #1a202c;
+}
+
+/* ===== SPINBOXES ===== */
+QSpinBox, QDoubleSpinBox
+    background-color: #2d3748;
+    color: #e2e8f0;
+    border-color: #4a5568;
+}
+
+QSpinBox:hover, QDoubleSpinBox:hover
+    border-color: #90cdf4;
+    background-color: #374151;
+}
+
+QSpinBox:focus, QDoubleSpinBox:focus
+    border-color: #63b3ed;
+}
+
+QSpinBox::up-button, QDoubleSpinBox::up-button
+    border-left-color: #4a5568;
+    background-color: #4a5568;
+}
+
+QSpinBox::down-button, QDoubleSpinBox::down-button
+    border-left-color: #4a5568;
+    background-color: #4a5568;
+}
+
+QSpinBox::up-button:hover, QDoubleSpinBox::up-button:hover,
+QSpinBox::down-button:hover, QDoubleSpinBox::down-button:hover
+    background-color: #718096;
+}
+
+QSpinBox::up-arrow, QDoubleSpinBox::up-arrow
+    border-bottom-color: #cbd5e0;
+}
+
+QSpinBox::down-arrow, QDoubleSpinBox::down-arrow
+    border-top-color: #cbd5e0;
+}
+
+/* ===== BOTONES ===== */
+QPushButton
+    background-color: #2d3748;
+    color: #e2e8f0;
+    border-color: #4a5568;
+}
+
+QPushButton:hover
+    background-color: #374151;
+    border-color: #90cdf4;
+}
+
+QPushButton:pressed
+    background-color: #4a5568;
+    border-color: #63b3ed;
+}
+
+QPushButton:disabled
+    background-color: #2d3748;
+    color: #718096;
+    border-color: #4a5568;
+}
+
+/* Botones específicos */
+#btnPrimary
+    background-color: #63b3ed;
+    color: #1a202c;
+    border-color: #4299e1;
+}
+
+#btnPrimary:hover
+    background-color: #4299e1;
+    border-color: #3182ce;
+}
+
+#btnSave
+    background-color: #68d391;
+    color: #1a202c;
+}
+
+#btnSave:hover
+    background-color: #48bb78;
+    border-color: #38a169;
+}
+
+#btnCancel
+    background-color: #4a5568;
+    color: #e2e8f0;
+}
+
+#btnCancel:hover
+    background-color: #718096;
+    border-color: #4a5568;
+}
+
+#btnDanger
+    background-color: #fc8181;
+    color: #1a202c;
+    border-color: #f56565;
+}
+
+#btnDanger:hover
+    background-color: #f56565;
+}
+
+/* ===== SIDEBAR ===== */
+#sidebar
+    background-color: #171923;
+    border-right-color: #2d3748;
+}
+
+#sidebarHeader
+    color: #e2e8f0;
+    background-color: #0f1419;
+}
+
+#navList::item
+    color: #a0aec0;
+}
+
+#navList::item:selected
+    background-color: #63b3ed;
+    color: #1a202c;
+}
+
+#navList::item:hover
+    background-color: #4a5568;
+    color: #e2e8f0;
+}
+
+/* ===== GROUP BOXES ===== */
+QGroupBox
+    background-color: #2d3748;
+    color: #e2e8f0;
+    border-color: #4a5568;
+}
+
+QGroupBox::title
+    color: #e2e8f0;
+    background-color: #2d3748;
+}
+
+/* Grupos específicos */
+#basicInfoGroup, #configGroup
+    border-color: #718096;
+    background-color: #2d3748;
+}
+
+/* ===== TABLAS ===== */
+QTableWidget, QTableView
+    background-color: #2d3748;
+    alternate-background-color: #374151;
+    color: #e2e8f0;
+    gridline-color: #4a5568;
+    selection-background-color: #63b3ed;
+    selection-color: #1a202c;
+    border-color: #4a5568;
+}
+
+QHeaderView::section
+    background-color: #4a5568;
+    color: #e2e8f0;
+    border-right-color: #4a5568;
+    border-bottom-color: #718096;
+}
+
+QHeaderView::section:hover
+    background-color: #718096;
+}
+
+/* Estados en tablas */
+.estado-activo
+    background-color: #22543d;
+    color: #9ae6b4;
+}
+
+.estado-finalizado
+    background-color: #2c5282;
+    color: #bee3f8;
+}
+
+.estado-cancelado
+    background-color: #742a2a;
+    color: #fed7d7;
+}
+
+.estado-en_diseno
+    background-color: #744210;
+    color: #feebc8;
+}
+
+/* ===== DIALOGS ===== */
+QDialog
+    background-color: #2d3748;
+    color: #e2e8f0;
+}
+
+#dialogButtons
+    background-color: #374151;
+    border-top-color: #4a5568;
+}
+
+/* ===== TABS ===== */
+QTabWidget::pane
+    border-color: #4a5568;
+    background-color: #2d3748;
+}
+
+QTabBar::tab
+    background-color: #4a5568;
+    color: #cbd5e0;
+}
+
+QTabBar::tab:selected
+    background-color: #2d3748;
+    color: #e2e8f0;
+    border-bottom-color: #63b3ed;
+}
+
+QTabBar::tab:hover:!selected
+    background-color: #718096;
+}
+
+/* ===== SCROLLBARS ===== */
+QScrollBar:vertical
+    background-color: #4a5568;
+}
+
+QScrollBar::handle:vertical
+    background-color: #718096;
+}
+
+QScrollBar::handle:vertical:hover
+    background-color: #90cdf4;
+}
+
+/* ===== MENUS ===== */
+QMenuBar
+    background-color: #2d3748;
+    border-bottom-color: #4a5568;
+    color: #e2e8f0;
+}
+
+QMenuBar::item:hover
+    background-color: #4a5568;
+    color: #e2e8f0;
+}
+
+QMenu
+    background-color: #2d3748;
+    border-color: #4a5568;
+    color: #e2e8f0;
+}
+
+QMenu::item:hover
+    background-color: #63b3ed;
+    color: #1a202c;
+}
+
+/* ===== PROGRESS BARS ===== */
+QProgressBar
+    border-color: #4a5568;
+    background-color: #4a5568;
+    color: #e2e8f0;
+}
+
+QProgressBar::chunk
+    background-color: #63b3ed;
+}
+
+/* ===== TOOLTIPS ===== */
+QToolTip
+    background-color: #4a5568;
+    color: #e2e8f0;
+    border-color: #718096;
+}
+
+/* ===== ESTADOS INTERACTIVOS - TEMA OSCURO ===== */
+
+/* Hover en inputs */
+QLineEdit:hover, QTextEdit:hover, QPlainTextEdit:hover,
+QComboBox:hover, QSpinBox:hover, QDoubleSpinBox:hover
+    border-color: #90cdf4;
+    background-color: #374151;
+}
+
+/* Focus en inputs */
+QLineEdit:focus, QTextEdit:focus, QPlainTextEdit:focus,
+QComboBox:focus, QSpinBox:focus, QDoubleSpinBox:focus
+    border-color: #63b3ed;
+}
+
+/* Hover en botones */
+    border-color: #63b3ed;
+    background-color: #374151;
+}
+
+    border-color: #63b3ed;
+    background-color: #374151;
+}
+
+/* Hover en botones específicos */
+    border-color: #63b3ed;
+    background-color: #374151;
+}
+
+    border-color: #63b3ed;
+    background-color: #374151;
+}
+
+    border-color: #63b3ed;
+    background-color: #374151;
+}
+
+    border-color: #63b3ed;
+    background-color: #374151;
+}
+
+/* Hover en sidebar */
+    border-color: #63b3ed;
+    background-color: #374151;
+    color: #e2e8f0;
+}
+
+    border-color: #63b3ed;
+    background-color: #374151;
+    color: #e2e8f0;
+}
+
+/* Hover en tablas */
+QTableWidget::item:hover, QTableView::item:hover
+    background-color: #374151;
+}
+
+    background-color: #374151;
+}
+
+/* Hover en tabs */
+    background-color: #374151;
+}
+
+/* Hover en combobox drop-down */
+    background-color: #374151;
+}
+
+/* Hover en spinners */
+QSpinBox::up-button:hover, QDoubleSpinBox::up-button:hover,
+    background-color: #374151;
+}
+/* ===== ESTADOS INTERACTIVOS - TEMA OSCURO ===== */
+
+/* Hover en inputs */
+QLineEdit:hover, QTextEdit:hover, QPlainTextEdit:hover,
+    background-color: #374151;
+    border-color: #90cdf4;
+}
+
+/* Focus en inputs */
+QLineEdit:focus, QTextEdit:focus, QPlainTextEdit:focus,
+    background-color: #374151;
+    border-color: #90cdf4;
+}
+
+/* Hover en botones */
+    background-color: #374151;
+    border-color: #90cdf4;
+}
+
+    background-color: #374151;
+    border-color: #90cdf4;
+}
