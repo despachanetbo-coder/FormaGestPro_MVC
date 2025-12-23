@@ -212,7 +212,7 @@ class ProgramasTab(QWidget):
                 color: black;
             }
             QTableWidget::item {
-                padding: 8px;
+                padding: 3px;
                 border-bottom: 1px solid #dee2e6;
             }
             QTableWidget::item:selected {

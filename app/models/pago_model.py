@@ -952,10 +952,10 @@ class PagoModel(BaseModel):
 
                     # Intentar obtener información del estudiante
                     try:
-                        from .matricula import MatriculaModel
+                        from .matricula_model import MatriculaModel
                         matricula = MatriculaModel.get_by_id(pago.matricula_id)
                         if matricula:
-                            from .estudiante import EstudianteModel
+                            from .estudiante_model import EstudianteModel
                             estudiante = EstudianteModel.get_by_id(matricula.estudiante_id)
                             if estudiante:
                                 pago.estudiante_nombre = estudiante.nombre_completo

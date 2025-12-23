@@ -99,10 +99,11 @@ class EstudiantesTab(QWidget):
         filter_frame = QFrame()
         filter_frame.setStyleSheet("""
             QFrame {
-                background-color: #ffffff;
+                background-color: white;
                 border: 1px solid #dee2e6;
                 border-radius: 8px;
                 padding: 15px;
+                color: black
             }
         """)
         
@@ -212,7 +213,7 @@ class EstudiantesTab(QWidget):
                 color: black;
             }
             QTableWidget::item {
-                padding: 8px;
+                padding: 3px;
                 border-bottom: 1px solid #dee2e6;
             }
             QTableWidget::item:selected {
@@ -608,7 +609,7 @@ class EstudiantesTab(QWidget):
         """)
         btn_detalles.clicked.connect(lambda: self.ver_detalles_estudiante(estudiante))
     
-        # Botón 2: Editar
+        # Botón 2: 
         btn_editar = QPushButton("✏️")
         btn_editar.setToolTip("Editar estudiante")
         btn_editar.setFixedSize(40, 28)
@@ -627,7 +628,7 @@ class EstudiantesTab(QWidget):
                 background-color: #1e8449;
             }
         """)
-        btn_editar.clicked.connect(lambda: self.editar_estudiante(estudiante))
+        btn_editar.clicked.connect(lambda: self.editar_estudiante(estudiante.id))
     
         # Botón 3: Matricular en programa
         btn_matricular = QPushButton("🎓")
