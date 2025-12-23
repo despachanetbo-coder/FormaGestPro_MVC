@@ -5,6 +5,7 @@ Ventana principal del sistema con sistema de pestañas
 Versión 2.0 - Interfaz profesional
 """
 import sys
+import logging
 from pathlib import Path
 
 from PySide6.QtWidgets import (
@@ -22,6 +23,8 @@ from app.views.tabs.docentes_tab import DocentesTab
 from app.views.tabs.programas_tab import ProgramasTab
 from app.views.tabs.financiero_tab import FinancieroTab
 from app.views.tabs.ayuda_tab import AyudaTab
+
+logger = logging.getLogger(__name__)
 
 class MainWindowTabs(QMainWindow):
     """Ventana principal con sistema de pestañas profesionales"""
@@ -43,9 +46,6 @@ class MainWindowTabs(QMainWindow):
         self.setWindowTitle("FormaGestPro - Sistema de Gestión Académica")
         self.setGeometry(100, 100, 1400, 900)  # x, y, width, height
         self.setMinimumSize(1200, 700)
-        
-        # Establecer icono (si existe)
-        # self.setWindowIcon(QIcon("resources/icons/app_icon.png"))
     
     def create_ui(self):
         """Crear todos los elementos de la interfaz"""
@@ -75,6 +75,11 @@ class MainWindowTabs(QMainWindow):
         
         # Menú Gestión
         menu_gestion = menubar.addMenu("&Gestión")
+        
+        action_dashboard = QAction("&Dashboard", self)
+        action_dashboard.setShortcut("Ctrl+H")
+        action_dashboard.triggered.connect(lambda: self.tab_widget.setCurrentIndex(0))
+        menu_gestion.addAction(action_dashboard)
         
         action_estudiantes = QAction("&Estudiantes", self)
         action_estudiantes.setShortcut("Ctrl+E")
@@ -106,6 +111,11 @@ class MainWindowTabs(QMainWindow):
         action_manual = QAction("&Manual de usuario", self)
         action_manual.triggered.connect(self.show_manual)
         menu_ayuda.addAction(action_manual)
+        
+        action_ayuda = QAction("&Ayuda del Sistema", self)
+        action_ayuda.setShortcut("F1")
+        action_ayuda.triggered.connect(lambda: self.tab_widget.setCurrentIndex(5))
+        menu_ayuda.addAction(action_ayuda)
     
     def create_toolbar(self):
         """Crear barra de herramientas"""
@@ -135,6 +145,18 @@ class MainWindowTabs(QMainWindow):
         btn_programas.triggered.connect(lambda: self.tab_widget.setCurrentIndex(3))
         toolbar.addAction(btn_programas)
         
+        # Botón Financiero
+        btn_financiero = QAction("💰 Financiero", self)
+        btn_financiero.triggered.connect(lambda: self.tab_widget.setCurrentIndex(4))
+        toolbar.addAction(btn_financiero)
+        
+        toolbar.addSeparator()
+        
+        # Botón Ayuda
+        btn_ayuda = QAction("🔧 Ayuda", self)
+        btn_ayuda.triggered.connect(lambda: self.tab_widget.setCurrentIndex(5))
+        toolbar.addAction(btn_ayuda)
+        
         toolbar.addSeparator()
         
         # Botón Actualizar
@@ -162,63 +184,83 @@ class MainWindowTabs(QMainWindow):
     
     def create_tabs(self):
         """Crear todas las pestañas del sistema"""
+        print("📁 Creando pestañas del sistema...")
+        
         # 1. Dashboard
-        self.tab_dashboard = self.create_dashboard_tab()
-        self.tab_widget.addTab(self.tab_dashboard, "🏠 Dashboard")
+        try:
+            self.tab_dashboard = DashboardTab()
+            self.tab_widget.addTab(self.tab_dashboard, "🏠 Dashboard")
+            print("✅ DashboardTab cargado correctamente")
+        except Exception as e:
+            print(f"⚠️  Error cargando DashboardTab: {e}")
+            self.tab_dashboard = self.create_module_tab("🏠 Dashboard", "#3498db", "Panel de control principal", True)
+            self.tab_widget.addTab(self.tab_dashboard, "🏠 Dashboard")
         
         # 2. Estudiantes
-        self.tab_estudiantes = EstudiantesTab()
-        self.tab_widget.addTab(self.tab_estudiantes, "👤 Estudiantes")
+        try:
+            self.tab_estudiantes = EstudiantesTab()
+            self.tab_widget.addTab(self.tab_estudiantes, "👤 Estudiantes")
+            print("✅ EstudiantesTab cargado correctamente")
+        except Exception as e:
+            print(f"⚠️  Error cargando EstudiantesTab: {e}")
+            self.tab_estudiantes = self.create_module_tab("👤 Estudiantes", "#e74c3c", "Gestión de estudiantes")
+            self.tab_widget.addTab(self.tab_estudiantes, "👤 Estudiantes")
         
         # 3. Docentes
         try:
-            from app.views.tabs.docentes_tab import DocentesTab
             self.tab_docentes = DocentesTab()
             self.tab_widget.addTab(self.tab_docentes, "👨‍🏫 Docentes/Tutores")
-            print("✅ Pestaña de docentes cargada correctamente")
-        except ImportError as e:
-            print(f"⚠️  Error cargando docentes_tab: {e}")
-            print("💡 Usando placeholder temporal")
-            self.tab_docentes = self.create_module_tab(
-                "👨‍🏫 Docentes/Tutores", 
-                "#9b59b6", 
-                "Gestión de docentes y tutores"
-            )
+            print("✅ DocentesTab cargado correctamente")
+        except Exception as e:
+            print(f"⚠️  Error cargando DocentesTab: {e}")
+            self.tab_docentes = self.create_module_tab("👨‍🏫 Docentes/Tutores", "#9b59b6", "Gestión de docentes y tutores")
+            self.tab_widget.addTab(self.tab_docentes, "👨‍🏫 Docentes/Tutores")
         
         # 4. Programas
-        self.tab_programas = self.create_module_tab(
-            "📚 Programas Académicos", 
-            "#2ecc71", 
-            "Gestión de programas y cursos"
-        )
-        self.tab_widget.addTab(self.tab_programas, "📚 Programas")
+        try:
+            self.tab_programas = ProgramasTab()
+            self.tab_widget.addTab(self.tab_programas, "📚 Programas")
+            print("✅ ProgramasTab cargado correctamente")
+        except Exception as e:
+            print(f"⚠️  Error cargando ProgramasTab: {e}")
+            self.tab_programas = self.create_module_tab("📚 Programas Académicos", "#2ecc71", "Gestión de programas y cursos")
+            self.tab_widget.addTab(self.tab_programas, "📚 Programas")
         
         # 5. Financiero
-        self.tab_financiero = self.create_module_tab(
-            "💰 Gestión Financiera", 
-            "#e74c3c", 
-            "Control financiero y contable"
-        )
-        self.tab_widget.addTab(self.tab_financiero, "💰 Financiero")
+        try:
+            self.tab_financiero = FinancieroTab()
+            self.tab_widget.addTab(self.tab_financiero, "💰 Financiero")
+            print("✅ FinancieroTab cargado correctamente")
+        except Exception as e:
+            print(f"⚠️  Error cargando FinancieroTab: {e}")
+            self.tab_financiero = self.create_module_tab("💰 Gestión Financiera", "#f39c12", "Control financiero y contable")
+            self.tab_widget.addTab(self.tab_financiero, "💰 Financiero")
         
         # 6. Ayuda
-        self.tab_ayuda = self.create_help_tab()
-        self.tab_widget.addTab(self.tab_ayuda, "🔧 Ayuda")
+        try:
+            self.tab_ayuda = AyudaTab()
+            self.tab_widget.addTab(self.tab_ayuda, "🔧 Ayuda")
+            print("✅ AyudaTab cargado correctamente")
+        except Exception as e:
+            print(f"⚠️  Error cargando AyudaTab: {e}")
+            self.tab_ayuda = self.create_help_tab()
+            self.tab_widget.addTab(self.tab_ayuda, "🔧 Ayuda")
+        
+        print("✅ Todas las pestañas creadas")
     
     def create_dashboard_tab(self):
         """Crear pestaña de Dashboard/Inicio"""
         from app.views.tabs.dashboard_tab import DashboardTab
         
         try:
-            # Intentar cargar el dashboard real
             dashboard = DashboardTab()
             return dashboard
-        except ImportError:
-            print("⚠️  DashboardTab no disponible, usando placeholder")
+        except Exception as e:
+            print(f"⚠️  DashboardTab no disponible: {e}")
             return self.create_module_tab("🏠 Dashboard", "#3498db", "Panel de control principal", True)
     
     def create_module_tab(self, title, color, description, show_stats=False):
-        """Crear pestaña para un módulo"""
+        """Crear pestaña para un módulo (placeholder)"""
         widget = QWidget()
         layout = QVBoxLayout(widget)
         layout.setSpacing(20)
@@ -387,7 +429,7 @@ class MainWindowTabs(QMainWindow):
         return widget
     
     def create_help_tab(self):
-        """Crear pestaña de Ayuda"""
+        """Crear pestaña de Ayuda (placeholder)"""
         widget = QWidget()
         layout = QVBoxLayout(widget)
         layout.setSpacing(20)
@@ -580,8 +622,17 @@ class MainWindowTabs(QMainWindow):
         """Manejar cambio de pestaña"""
         tab_names = ["Dashboard", "Estudiantes", "Docentes", "Programas", "Financiero", "Ayuda"]
         if 0 <= index < len(tab_names):
-            self.statusBar().showMessage(f"📁 Módulo activo: {tab_names[index]}", 3000)
-    
+            message = f"📁 Módulo activo: {tab_names[index]}"
+            self.statusBar().showMessage(message, 3000)
+            
+        # Actualizar interfaz si el tab tiene el método
+        current_tab = self.tab_widget.widget(index)
+        if hasattr(current_tab, 'actualizar_interfaz'):
+            try:
+                current_tab.actualizar_interfaz()
+            except Exception as e:
+                logger.error(f"Error al actualizar interfaz: {e}")
+        
     def show_module_message(self, module_name):
         """Mostrar mensaje informativo del módulo"""
         QMessageBox.information(
