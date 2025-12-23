@@ -1,419 +1,594 @@
 # app/views/tabs/estudiantes_tab.py
 """
-Pestaña de Estudiantes - Versión completa con búsqueda, tabla paginada y funcionalidades CRUD
+Pestaña de gestión de estudiantes - Implementación completa con paginación
 """
-import logging
-from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QGridLayout, QGroupBox,
-    QLabel, QLineEdit, QPushButton, QComboBox, QTableWidget,
-    QTableWidgetItem, QHeaderView, QMessageBox, QProgressDialog,
-    QToolButton, QFrame, QSizePolicy, QSpacerItem, QTextEdit, 
-    QDialog, QFormLayout
-)
-from PySide6.QtCore import Qt, QTimer, Signal, Slot, QSize
-from PySide6.QtGui import QColor, QFont, QIcon
 
-# Importa solo los modelos necesarios
-from app.models.estudiante_model import EstudianteModel
-from app.models.matricula_model import MatriculaModel
-from app.models.programa_academico_model import ProgramaAcademicoModel
-from app.models.pago_model import PagoModel
-from database import db, Database
-from datetime import datetime
-import os
-import sys
+import logging
 from pathlib import Path
 
-try:
-    from app.views.dialogs.estudiante_form_dialog import EstudianteFormDialog
-except ImportError as e:
-    print(f"⚠️ Error importando EstudianteFormDialog: {e}")
-    # Definir placeholder si no existe
-    class EstudianteFormDialog:
-        estudiante_guardado = None
-        estudiante_inscribir = None
-        estudiante_borrar = None
-        
-        def __init__(self, *args, **kwargs):
-            pass
+from PySide6.QtWidgets import (
+    QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QTableWidget,
+    QTableWidgetItem, QHeaderView, QMessageBox, QLineEdit, QLabel,
+    QComboBox, QFormLayout, QGroupBox, QGridLayout, QFrame, QMenu
+)
+from PySide6.QtCore import Qt, Signal, Slot
+from PySide6.QtGui import QIcon, QFont
 
-try:
-    from app.views.generated.dialogs.ui_matricular_estudiante_dialog import Ui_MatricularEstudianteDialog
-except ImportError as e:
-    print(f"⚠️ Advertencia: No se pudo importar diálogos: {e}")
-    # Definir placeholders
-    class Ui_MatricularEstudianteDialog:
-        pass
-    EstudianteFormDialog = None
+from app.models.estudiante_model import EstudianteModel
 
 logger = logging.getLogger(__name__)
 
-# Agregar el directorio raíz al path de Python
-root_dir = Path(__file__).parent
-sys.path.insert(0, str(root_dir))
-
-#################################
-# PESTAÑA PRINCIPAL ESTUDIANTES #
-#################################
 class EstudiantesTab(QWidget):
-    """Pestaña principal de gestión de estudiantes - Versión simplificada usando controlador"""
+    """Pestaña para gestión de estudiantes con flujo completo edición/lectura y paginación"""
+    
+    # Señales para comunicación con MainWindow
+    estudiante_seleccionado = Signal(dict)
+    necesita_actualizar = Signal()
     
     def __init__(self, parent=None):
         super().__init__(parent)
         
-        # Configuración inicial
+        self.estudiantes_data = []
+        self.estudiantes_paginados = []
+        self.estudiantes_filtrados_actuales = []
+        self.current_filter = 'todos'
         self.current_page = 1
-        self.records_per_page = 25
-        self.total_records = 0
+        self.records_per_page = 10  # Mostrar 10 registros por página
         self.total_pages = 1
-        self.current_filter = None
-        self.estudiantes_cache = []
-        
-        # Referencia al controlador de estudiantes
-        self.estudiante_controller = None
         
         self.setup_ui()
         self.setup_connections()
-        self.cargar_estudiantes_inicial()
+        self.cargar_estudiantes()
     
     def setup_ui(self):
-        """Configurar interfaz - Versión simplificada"""
-        main_layout = QVBoxLayout(self)
-        main_layout.setSpacing(10)
+        """Configurar la interfaz de usuario de la pestaña"""
+        layout = QVBoxLayout(self)
+        layout.setSpacing(10)
+        layout.setContentsMargins(10, 10, 10, 10)
         
-        # ==================== SECCIÓN DE BÚSQUEDA ====================
-        search_group = QGroupBox("🔍 Buscar Estudiantes")
-        search_group.setStyleSheet("""
-            QGroupBox {
-               color: #2c3e50;
+        # ============ ENCABEZADO ============
+        header_frame = QFrame()
+        header_frame.setStyleSheet("""
+            QFrame {
+                background-color: #f8f9fa;
+                border-radius: 10px;
+                padding: 15px;
             }
         """)
-        search_layout = QGridLayout()
         
-        # Búsqueda por CI
-        label_ci = QLabel("Buscar por CI:")
-        label_ci.setStyleSheet("color: black; font-weight: bold;")
-        search_layout.addWidget(label_ci, 0, 0)
-        self.txtBuscarCI = QLineEdit()
-        self.txtBuscarCI.setPlaceholderText("Ingrese número de CI")
-        self.txtBuscarCI.setStyleSheet("color: #212121; background-color: #FFFFFF;")
-        search_layout.addWidget(self.txtBuscarCI, 0, 1)
+        header_layout = QHBoxLayout(header_frame)
         
-        self.comboExpedicion = QComboBox()
-        self.comboExpedicion.addItems(["Todas", "BE", "CH", "CB", "LP", "OR", "PD", "PT", "SC", "TJ", "EX"])
-        search_layout.addWidget(self.comboExpedicion, 0, 2)
+        # Título
+        title_label = QLabel("👨‍🎓 Gestión de Estudiantes")
+        title_label.setStyleSheet("""
+            QLabel {
+                font-size: 20px;
+                font-weight: bold;
+                color: #2c3e50;
+            }
+        """)
+        header_layout.addWidget(title_label)
         
-        self.btnBuscarCI = QPushButton("🔍 Buscar por CI")
-        self.btnBuscarCI.setStyleSheet("""
+        header_layout.addStretch()
+        
+        # Botón Nuevo Estudiante
+        self.btn_nuevo_estudiante = QPushButton("➕ Nuevo Estudiante")
+        self.btn_nuevo_estudiante.setFixedHeight(40)
+        self.btn_nuevo_estudiante.setStyleSheet("""
+            QPushButton {
+                background-color: #9b59b6;
+                color: white;
+                font-weight: bold;
+                border-radius: 6px;
+                padding: 8px 16px;
+                font-size: 14px;
+            }
+            QPushButton:hover {
+                background-color: #8e44ad;
+            }
+            QPushButton:pressed {
+                background-color: #7d3c98;
+            }
+        """)
+        self.btn_nuevo_estudiante.setToolTip("Agregar un nuevo estudiante al sistema")
+        header_layout.addWidget(self.btn_nuevo_estudiante)
+        
+        layout.addWidget(header_frame)
+        
+        # ============ FILTROS ============
+        filter_frame = QFrame()
+        filter_frame.setStyleSheet("""
+            QFrame {
+                background-color: #ffffff;
+                border: 1px solid #dee2e6;
+                border-radius: 8px;
+                padding: 15px;
+            }
+        """)
+        
+        filter_layout = QHBoxLayout(filter_frame)
+        
+        # Etiqueta de filtro
+        filter_label = QLabel("Filtrar por estado:")
+        filter_label.setStyleSheet("font-weight: bold; color: #495057;")
+        filter_layout.addWidget(filter_label)
+        
+        # Combo box para filtro
+        self.combo_filtro = QComboBox()
+        self.combo_filtro.addItems(['Todos', 'Activos', 'Inactivos', 'Graduados'])
+        self.combo_filtro.setFixedHeight(36)
+        self.combo_filtro.setFixedWidth(150)
+        self.combo_filtro.setStyleSheet("""
+            QComboBox {
+                padding: 8px;
+                border: 1px solid #ced4da;
+                border-radius: 4px;
+                font-size: 14px;
+            }
+            QComboBox:focus {
+                border: 2px solid #9b59b6;
+            }
+        """)
+        filter_layout.addWidget(self.combo_filtro)
+        
+        # Buscador
+        search_label = QLabel("Buscar:")
+        search_label.setStyleSheet("font-weight: bold; color: #495057; margin-left: 20px;")
+        filter_layout.addWidget(search_label)
+        
+        self.txt_buscar = QLineEdit()
+        self.txt_buscar.setPlaceholderText("Nombre, CI, matrícula o carrera...")
+        self.txt_buscar.setFixedHeight(36)
+        self.txt_buscar.setMinimumWidth(250)
+        self.txt_buscar.setStyleSheet("""
+            QLineEdit {
+                padding: 8px 12px;
+                border: 1px solid #ced4da;
+                border-radius: 4px;
+                font-size: 14px;
+            }
+            QLineEdit:focus {
+                border: 2px solid #9b59b6;
+            }
+        """)
+        filter_layout.addWidget(self.txt_buscar)
+        
+        # Botón Buscar
+        self.btn_buscar = QPushButton("🔍 Buscar")
+        self.btn_buscar.setFixedHeight(36)
+        self.btn_buscar.setStyleSheet("""
             QPushButton {
                 background-color: #3498db;
                 color: white;
-                padding: 5px 10px;
+                font-weight: bold;
                 border-radius: 4px;
+                padding: 8px 16px;
+                font-size: 14px;
+                border: none;
             }
             QPushButton:hover {
                 background-color: #2980b9;
             }
-        """)
-        search_layout.addWidget(self.btnBuscarCI, 0, 3)
-        
-        # Búsqueda por nombre
-        label_nombres_o_apellidos = QLabel("Buscar por Nombres o Apellidos:")
-        label_nombres_o_apellidos.setStyleSheet("color: black; font-weight: bold;")
-        search_layout.addWidget(label_nombres_o_apellidos, 1, 0)
-        self.txtBuscarNombre = QLineEdit()
-        self.txtBuscarNombre.setStyleSheet("color: #212121; background-color: #FFFFFF;")
-        self.txtBuscarNombre.setPlaceholderText("Ingrese nombre o apellido")
-        search_layout.addWidget(self.txtBuscarNombre, 1, 1, 1, 2)
-        
-        self.btnBuscarNombre = QPushButton("👤 Buscar por nombre")
-        self.btnBuscarNombre.setStyleSheet("""
-            QPushButton {
-                background-color: #2ecc71;
-                color: white;
-                padding: 5px 10px;
-                border-radius: 4px;
-            }
-            QPushButton:hover {
-                background-color: #27ae60;
+            QPushButton:pressed {
+                background-color: #1f618d;
             }
         """)
-        search_layout.addWidget(self.btnBuscarNombre, 1, 3)
+        filter_layout.addWidget(self.btn_buscar)
         
-        search_group.setLayout(search_layout)
-        main_layout.addWidget(search_group)
-        
-        # ==================== BOTONES DE ACCIÓN ====================
-        action_layout = QHBoxLayout()
-        
-        self.btnNuevo = QPushButton("➕ Nuevo Estudiante")
-        self.btnNuevo.setIcon(QIcon(":/icons/add.png") if hasattr(QIcon, "fromTheme") else QIcon())
-        self.btnNuevo.setStyleSheet("""
+        # Botón Limpiar
+        self.btn_limpiar = QPushButton("🗑️ Limpiar")
+        self.btn_limpiar.setFixedHeight(36)
+        self.btn_limpiar.setStyleSheet("""
             QPushButton {
-                background-color: #27ae60;
+                background-color: #95a5a6;
                 color: white;
-                padding: 8px 15px;
-                border-radius: 4px;
                 font-weight: bold;
+                border-radius: 4px;
+                padding: 8px 16px;
+                font-size: 14px;
+                border: none;
             }
             QPushButton:hover {
-                background-color: #219653;
+                background-color: #7f8c8d;
+            }
+            QPushButton:pressed {
+                background-color: #616a6b;
             }
         """)
+        filter_layout.addWidget(self.btn_limpiar)
         
-        #self.btnMostrarTodos = QPushButton("📋 Mostrar Todos")
-        #self.btnMostrarTodos.setStyleSheet("""
-        #    QPushButton {
-        #        background-color: #7f8c8d;
-        #        color: white;
-        #        padding: 8px 15px;
-        #        border-radius: 4px;
-        #    }
-        #    QPushButton:hover {
-        #        background-color: #95a5a6;
-        #    }
-        #""")
-        #
-        #self.btnAbrirGestorCompleto = QPushButton("📊 Abrir Gestor Completo")
-        #self.btnAbrirGestorCompleto.setStyleSheet("""
-        #    QPushButton {
-        #        background-color: #9b59b6;
-        #        color: white;
-        #        padding: 8px 15px;
-        #        border-radius: 4px;
-        #    }
-        #    QPushButton:hover {
-        #        background-color: #8e44ad;
-        #    }
-        #""")
+        filter_layout.addStretch()
+        layout.addWidget(filter_frame)
         
-        action_layout.addWidget(self.btnNuevo)
-        #action_layout.addWidget(self.btnMostrarTodos)
-        #action_layout.addWidget(self.btnAbrirGestorCompleto)
-        action_layout.addStretch()
-        
-        main_layout.addLayout(action_layout)
-        
-        # ==================== TABLA DE ESTUDIANTES ====================
-        self.tableEstudiantes = QTableWidget()
-        self.tableEstudiantes.setColumnCount(9)  # Reducido a 9 columnas
-        self.tableEstudiantes.setHorizontalHeaderLabels([
-            "ID", "CI", "Nombre Completo", "Email", "Teléfono", 
-            "Universidad", "Profesión", "Estado", "Acciones"
-        ])
-        
-        # Configurar tabla
-        header = self.tableEstudiantes.horizontalHeader()
-        header.setSectionResizeMode(0, QHeaderView.ResizeToContents)  # ID
-        header.setSectionResizeMode(1, QHeaderView.ResizeToContents)  # CI
-        header.setSectionResizeMode(2, QHeaderView.Stretch)           # Nombre
-        header.setSectionResizeMode(3, QHeaderView.ResizeToContents)  # Email
-        header.setSectionResizeMode(4, QHeaderView.ResizeToContents)  # Teléfono
-        header.setSectionResizeMode(5, QHeaderView.ResizeToContents)  # Universidad
-        header.setSectionResizeMode(6, QHeaderView.ResizeToContents)  # Profesión
-        header.setSectionResizeMode(7, QHeaderView.ResizeToContents)  # Estado
-        header.setSectionResizeMode(8, QHeaderView.Stretch)           # Acciones
-        self.tableEstudiantes.setColumnWidth(10, 300)  # Más pequeño
-        
-        # Estilo de la tabla
-        self.tableEstudiantes.setAlternatingRowColors(True)
-        self.tableEstudiantes.setStyleSheet("""
+        # ============ TABLA DE ESTUDIANTES ============
+        self.tabla_estudiantes = QTableWidget()
+        self.tabla_estudiantes.setStyleSheet("""
             QTableWidget {
-                background-color: #fbfbfb;
-                color: #212121;
-                border-color: #E0E0E0;
-                alternate-background-color: #F8F8F8;
-                selection-background-color: #1976D2;
-                selection-color: #FFFFFF;
-                font-size: 11px;
+                background-color: white;
+                alternate-background-color: #f8f9fa;
+                border: 1px solid #dee2e6;
+                border-radius: 8px;
+                gridline-color: #dee2e6;
+                color: black;
             }
             QTableWidget::item {
-                padding: 4px;
+                padding: 8px;
+                border-bottom: 1px solid #dee2e6;
             }
             QTableWidget::item:selected {
-                background-color: #3498db;
+                background-color: #9b59b6;
                 color: white;
+            }
+            QHeaderView::section {
+                background-color: #2c3e50;
+                color: white;
+                padding: 12px;
+                border: none;
+                font-weight: bold;
+                font-size: 13px;
             }
         """)
         
-        main_layout.addWidget(self.tableEstudiantes)
+        self.tabla_estudiantes.setAlternatingRowColors(True)
+        self.tabla_estudiantes.setSelectionBehavior(QTableWidget.SelectRows)
+        self.tabla_estudiantes.setSelectionMode(QTableWidget.SingleSelection)
+        self.tabla_estudiantes.verticalHeader().setVisible(False)
+        self.tabla_estudiantes.verticalHeader().setDefaultSectionSize(40)
         
-        # ==================== PAGINACIÓN ====================
-        pagination_layout = QHBoxLayout()
+        layout.addWidget(self.tabla_estudiantes, 1)
         
-        # Controles de registros por página
-        pagination_layout.addWidget(QLabel("Mostrar:"))
-        self.comboRegistrosPagina = QComboBox()
-        self.comboRegistrosPagina.addItems(["10", "25", "50", "100", "Todos"])
-        self.comboRegistrosPagina.setCurrentText("25")
-        pagination_layout.addWidget(self.comboRegistrosPagina)
+        # ============ CONTROLES DE PAGINACIÓN ============
+        pagination_frame = QFrame()
+        pagination_frame.setStyleSheet("""
+            QFrame {
+                background-color: #ffffff;
+                border: 1px solid #dee2e6;
+                border-radius: 8px;
+                padding: 10px;
+            }
+        """)
         
-        pagination_layout.addSpacerItem(QSpacerItem(20, 0, QSizePolicy.Expanding, QSizePolicy.Minimum))
+        pagination_layout = QHBoxLayout(pagination_frame)
+        pagination_layout.setContentsMargins(20, 5, 20, 5)
         
-        # Botones de paginación
-        self.btnPrimera = QPushButton("⏮️ Primera")
-        self.btnAnterior = QPushButton("◀️ Anterior")
-        self.btnSiguiente = QPushButton("Siguiente ▶️")
-        self.btnUltima = QPushButton("Última ⏭️")
+        # Botón Primera Página
+        self.btn_primera = QPushButton("⏮️ Primera")
+        self.btn_primera.setFixedHeight(35)
+        self.btn_primera.setStyleSheet("""
+            QPushButton {
+                background-color: #7f8c8d;
+                color: white;
+                font-weight: bold;
+                border-radius: 4px;
+                padding: 6px 12px;
+                font-size: 12px;
+                min-width: 80px;
+            }
+            QPushButton:hover {
+                background-color: #727b84;
+            }
+            QPushButton:disabled {
+                background-color: #bdc3c7;
+                color: #7f8c8d;
+            }
+        """)
+        pagination_layout.addWidget(self.btn_primera)
         
-        for btn in [self.btnPrimera, self.btnAnterior, self.btnSiguiente, self.btnUltima]:
-            btn.setFixedSize(100, 30)
-            pagination_layout.addWidget(btn)
+        # Botón Anterior
+        self.btn_anterior = QPushButton("◀️ Anterior")
+        self.btn_anterior.setFixedHeight(35)
+        self.btn_anterior.setStyleSheet("""
+            QPushButton {
+                background-color: #95a5a6;
+                color: white;
+                font-weight: bold;
+                border-radius: 4px;
+                padding: 6px 12px;
+                font-size: 12px;
+                min-width: 80px;
+            }
+            QPushButton:hover {
+                background-color: #7f8c8d;
+            }
+            QPushButton:disabled {
+                background-color: #bdc3c7;
+                color: #7f8c8d;
+            }
+        """)
+        pagination_layout.addWidget(self.btn_anterior)
         
-        # Etiquetas de paginación
-        self.lblPaginaInfo = QLabel("Página 0 de 0")
-        self.lblContador = QLabel("Mostrando 0-0 de 0 estudiantes")
-        pagination_layout.addWidget(self.lblPaginaInfo)
-        pagination_layout.addWidget(self.lblContador)
+        # Información de página
+        pagination_layout.addStretch()
         
-        main_layout.addLayout(pagination_layout)
+        self.lbl_info_pagina = QLabel("Página 1 de 1")
+        self.lbl_info_pagina.setStyleSheet("""
+            QLabel {
+                font-weight: bold;
+                color: #2c3e50;
+                font-size: 13px;
+            }
+        """)
+        pagination_layout.addWidget(self.lbl_info_pagina)
         
-        # ==================== BARRA DE ESTADO ====================
-        self.statusBar = QLabel("Sistema de gestión de estudiantes listo")
-        self.statusBar.setStyleSheet("color: #7f8c8d; font-style: italic; padding: 5px;")
-        main_layout.addWidget(self.statusBar)
+        # Contador de registros
+        self.lbl_contador = QLabel("Mostrando 0 de 0 registros")
+        self.lbl_contador.setStyleSheet("""
+            QLabel {
+                color: #7f8c8d;
+                font-size: 12px;
+                font-style: italic;
+            }
+        """)
+        pagination_layout.addWidget(self.lbl_contador)
+        
+        pagination_layout.addStretch()
+        
+        # Botón Siguiente
+        self.btn_siguiente = QPushButton("Siguiente ▶️")
+        self.btn_siguiente.setFixedHeight(35)
+        self.btn_siguiente.setStyleSheet("""
+            QPushButton {
+                background-color: #95a5a6;
+                color: white;
+                font-weight: bold;
+                border-radius: 4px;
+                padding: 6px 12px;
+                font-size: 12px;
+                min-width: 80px;
+            }
+            QPushButton:hover {
+                background-color: #7f8c8d;
+            }
+            QPushButton:disabled {
+                background-color: #bdc3c7;
+                color: #7f8c8d;
+            }
+        """)
+        pagination_layout.addWidget(self.btn_siguiente)
+        
+        # Botón Última Página
+        self.btn_ultima = QPushButton("Última ⏭️")
+        self.btn_ultima.setFixedHeight(35)
+        self.btn_ultima.setStyleSheet("""
+            QPushButton {
+                background-color: #7f8c8d;
+                color: white;
+                font-weight: bold;
+                border-radius: 4px;
+                padding: 6px 12px;
+                font-size: 12px;
+                min-width: 80px;
+            }
+            QPushButton:hover {
+                background-color: #727b84;
+            }
+            QPushButton:disabled {
+                background-color: #bdc3c7;
+                color: #7f8c8d;
+            }
+        """)
+        pagination_layout.addWidget(self.btn_ultima)
+        
+        layout.addWidget(pagination_frame)
+        
+        # ============ ESTADO ============
+        self.lbl_estado = QLabel("Cargando estudiantes...")
+        self.lbl_estado.setStyleSheet("color: #7f8c8d; font-style: italic;")
+        self.lbl_estado.setAlignment(Qt.AlignCenter)
+        layout.addWidget(self.lbl_estado)
     
     def setup_connections(self):
-        """Conectar todas las señales usando métodos del controlador"""
-        # Botones de búsqueda
-        self.btnBuscarCI.clicked.connect(self.buscar_por_ci_simple)
-        self.btnBuscarNombre.clicked.connect(self.buscar_por_nombre_simple)
-        #self.btnMostrarTodos.clicked.connect(self.mostrar_todos)
-        self.btnNuevo.clicked.connect(self.nuevo_estudiante)
-        #self.btnAbrirGestorCompleto.clicked.connect(self.abrir_gestor_completo)
+        """Conectar señales y slots"""
+        # Botones
+        self.btn_nuevo_estudiante.clicked.connect(self.agregar_nuevo_estudiante)
+        self.btn_buscar.clicked.connect(self.buscar_estudiantes)
+        self.btn_limpiar.clicked.connect(self.limpiar_busqueda)
         
-        # Buscar con Enter
-        self.txtBuscarCI.returnPressed.connect(self.buscar_por_ci_simple)
-        self.txtBuscarNombre.returnPressed.connect(self.buscar_por_nombre_simple)
+        # Filtros
+        self.combo_filtro.currentTextChanged.connect(
+            lambda: self.filtrar_estudiantes(desde_paginacion=False)
+        )
+        self.txt_buscar.returnPressed.connect(self.buscar_estudiantes)
         
         # Paginación
-        self.btnPrimera.clicked.connect(lambda: self.cambiar_pagina(1))
-        self.btnAnterior.clicked.connect(self.pagina_anterior)
-        self.btnSiguiente.clicked.connect(self.pagina_siguiente)
-        self.btnUltima.clicked.connect(self.ultima_pagina)
-        self.comboRegistrosPagina.currentTextChanged.connect(self.cambiar_registros_pagina)
-        
-        # Doble click en tabla para abrir detalles
-        self.tableEstudiantes.doubleClicked.connect(self.on_doble_click_tabla)
+        self.btn_primera.clicked.connect(lambda: self.cambiar_pagina(1))
+        self.btn_anterior.clicked.connect(lambda: self.cambiar_pagina(self.current_page - 1))
+        self.btn_siguiente.clicked.connect(lambda: self.cambiar_pagina(self.current_page + 1))
+        self.btn_ultima.clicked.connect(lambda: self.cambiar_pagina(self.total_pages))
     
-    def abrir_gestor_completo(self):
-        """Abrir gestor completo de estudiantes"""
+    def cargar_estudiantes(self, filtro='todos'):
+        """Cargar estudiantes desde la base de datos"""
         try:
-            from app.views.dialogs.estudiante_form_dialog import EstudianteFormDialog
-
-            dialog = EstudianteFormDialog(parent=self)
-            dialog.estudiante_guardado.connect(self.cargar_estudiantes)
-            dialog.exec()
-
-        except ImportError as e:
-            print(f'Error importando EstudianteFormDialog: {e}')
-            from PySide6.QtWidgets import QMessageBox
-            QMessageBox.warning(self, 'Error', f'No se pudo abrir el gestor: {e}')
-        except Exception as e:
-            print(f'Error abriendo gestor completo: {e}')
-            from PySide6.QtWidgets import QMessageBox
-            QMessageBox.critical(self, 'Error', f'Error al abrir gestor: {e}')
-
-    # ==================== MÉTODOS SIMPLIFICADOS QUE USAN EL CONTROLADOR ====================
-    
-    def cargar_estudiantes_inicial(self):
-        """Cargar estudiantes al iniciar"""
-        QTimer.singleShot(100, self.mostrar_todos)
-    
-    def cargar_estudiantes(self, filtro=None):
-        """Cargar estudiantes con paginación - Versión corregida"""
-        try:
-            # Limpiar tabla
-            self.tableEstudiantes.setRowCount(0)
+            self.lbl_estado.setText("Cargando estudiantes...")
             
-            # Obtener estudiantes según filtro
-            estudiantes = []
+            # Obtener todos los estudiantes
+            self.estudiantes_data = EstudianteModel.get_all()
             
-            if filtro is None:
-                # Mostrar todos los activos
-                estudiantes = EstudianteModel.buscar_activos()
-            elif 'ci_numero' in filtro:
-                # Buscar por CI
-                expedicion = filtro.get('ci_expedicion', 'Todas')
-                if expedicion != 'Todas':
-                    # Buscar por CI específico
-                    estudiante = EstudianteModel.buscar_por_ci(
-                        filtro['ci_numero'], 
-                        expedicion
-                    )
-                    if estudiante:
-                        estudiantes = [estudiante]
-                else:
-                    # Buscar solo por número de CI
-                    # Necesitarías un método buscar_por_ci_numero
-                    # Por ahora, filtrar de todos
-                    todos = EstudianteModel.buscar_activos()
-                    estudiantes = [
-                        e for e in todos 
-                        if filtro['ci_numero'] in e.ci_numero
-                    ]
-            elif 'nombre' in filtro:
-                # Buscar por nombre
-                estudiantes = EstudianteModel.buscar_por_nombre(filtro['nombre'])
+            # Resetear paginación
+            self.current_page = 1
             
-            self.estudiantes_cache = estudiantes
-            self.total_records = len(estudiantes)
+            # Aplicar filtro inicial
+            self.current_filter = filtro
+            self.filtrar_estudiantes(desde_paginacion=False)
             
-            if not estudiantes:
-                # Mostrar mensaje de "sin datos"
-                self.tableEstudiantes.setRowCount(1)
-                item = QTableWidgetItem("No se encontraron estudiantes")
-                item.setTextAlignment(Qt.AlignCenter)
-                item.setForeground(QColor("#7f8c8d"))
-                self.tableEstudiantes.setItem(0, 0, item)
-                self.tableEstudiantes.setSpan(0, 0, 1, 9)
+            if self.estudiantes_data:
+                self.lbl_estado.setText(f"✅ {len(self.estudiantes_data)} estudiantes cargados")
             else:
-                # Llenar tabla
-                for i, estudiante in enumerate(estudiantes):
-                    self.tableEstudiantes.insertRow(i)
-                    self.tableEstudiantes.setRowHeight(i, 40)
-                    
-                    # Datos básicos
-                    self.tableEstudiantes.setItem(i, 0, QTableWidgetItem(str(estudiante.id)))
-                    self.tableEstudiantes.setItem(i, 1, QTableWidgetItem(
-                        f"{estudiante.ci_numero}-{estudiante.ci_expedicion}"))
-                    self.tableEstudiantes.setItem(i, 2, QTableWidgetItem(estudiante.nombre_completo))
-                    self.tableEstudiantes.setItem(i, 3, QTableWidgetItem(estudiante.email or ""))
-                    self.tableEstudiantes.setItem(i, 4, QTableWidgetItem(estudiante.telefono or ""))
-                    self.tableEstudiantes.setItem(i, 5, QTableWidgetItem(estudiante.universidad_egreso or ""))
-                    self.tableEstudiantes.setItem(i, 6, QTableWidgetItem(estudiante.profesion or ""))
-                    
-                    # Estado
-                    estado = QTableWidgetItem("✅ Activo" if estudiante.activo else "❌ Inactivo")
-                    estado.setForeground(QColor("#27ae60") if estudiante.activo else QColor("#e74c3c"))
-                    estado.setTextAlignment(Qt.AlignCenter)
-                    self.tableEstudiantes.setItem(i, 7, estado)
-                    
-                    # Acciones
-                    acciones_widget = self.crear_widget_acciones(estudiante)
-                    self.tableEstudiantes.setCellWidget(i, 8, acciones_widget)
+                self.lbl_estado.setText("📭 No hay estudiantes registrados")
+                
+        except Exception as e:
+            logger.error(f"Error al cargar estudiantes: {e}")
+            self.lbl_estado.setText("❌ Error al cargar estudiantes")
+            QMessageBox.critical(self, "Error", f"Error al cargar estudiantes: {str(e)}")
+    
+    def filtrar_estudiantes(self, desde_paginacion=False):
+        """Filtrar estudiantes según el estado seleccionado y aplicar paginación"""
+        try:
+            # Obtener valores actuales
+            filtro_texto = self.combo_filtro.currentText().lower()
+            texto_busqueda = self.txt_buscar.text().strip().lower()
             
-            # Actualizar controles
-            self.actualizar_controles_paginacion()
-            self.actualizar_contador()
+            # Filtrar estudiantes
+            estudiantes_filtrados = []
+            for estudiante in self.estudiantes_data:
+                # Filtrar por estado
+                if filtro_texto == 'activos' and estudiante.activo != 1:
+                    continue
+                elif filtro_texto == 'inactivos' and estudiante.activo != 0:
+                    continue
+                elif filtro_texto == 'graduados':
+                    # Asumiendo que hay un atributo 'graduado' en el modelo
+                    if not getattr(estudiante, 'graduado', False):
+                        continue
+                
+                # Filtrar por búsqueda si hay texto
+                if texto_busqueda:
+                    campos = [
+                        str(estudiante.nombres or ''),
+                        str(estudiante.apellidos or ''),
+                        str(getattr(estudiante, 'ci_numero', '') or ''),
+                        str(getattr(estudiante, 'matricula', '') or ''),
+                        str(getattr(estudiante, 'carrera', '') or '')
+                    ]
+                    
+                    if not any(texto_busqueda in campo.lower() for campo in campos):
+                        continue
+                
+                estudiantes_filtrados.append(estudiante)
             
-            self.statusBar.setText(f"Cargados {len(estudiantes)} estudiantes")
+            # Actualizar la lista filtrada
+            self.estudiantes_filtrados_actuales = estudiantes_filtrados
+            
+            # Resetear a página 1 solo si no viene desde paginación
+            if not desde_paginacion:
+                self.current_page = 1
+            
+            # Actualizar la paginación
+            self.actualizar_paginacion()
             
         except Exception as e:
-            self.statusBar.setText(f"Error: {str(e)}")
-            QMessageBox.critical(self, "Error", f"Error cargando estudiantes: {str(e)}")
-            logger.error(f"Error en cargar_estudiantes: {e}")
+            logger.error(f"Error al filtrar estudiantes: {e}")
+            import traceback
+            traceback.print_exc()
     
+    def buscar_estudiantes(self):
+        """Buscar estudiantes según el texto ingresado"""
+        self.current_page = 1
+        self.filtrar_estudiantes(desde_paginacion=False)
+    
+    def limpiar_busqueda(self):
+        """Limpiar el campo de búsqueda, resetear paginación y mostrar todos"""
+        self.txt_buscar.clear()
+        self.current_page = 1
+        self.filtrar_estudiantes(desde_paginacion=False)
+    
+    def mostrar_estudiantes_en_tabla(self, estudiantes):
+        """Mostrar estudiantes en la tabla con botones completos"""
+        try:
+            self.tabla_estudiantes.clear()
+
+            # Configurar columnas (ajusta según tu modelo de estudiante)
+            columnas = [
+                "ID", "Matrícula", "CI", "Nombres", "Apellidos", 
+                "Carrera", "Email", "Teléfono", "Estado", "Acciones"
+            ]
+
+            self.tabla_estudiantes.setColumnCount(len(columnas))
+            self.tabla_estudiantes.setHorizontalHeaderLabels(columnas)
+            self.tabla_estudiantes.setRowCount(len(estudiantes))
+
+            # Llenar datos
+            for fila, estudiante in enumerate(estudiantes):
+                # Configurar altura de fila uniforme
+                self.tabla_estudiantes.setRowHeight(fila, 40)
+
+                # ID
+                item_id = QTableWidgetItem(str(estudiante.id))
+                item_id.setTextAlignment(Qt.AlignCenter)
+                self.tabla_estudiantes.setItem(fila, 0, item_id)
+
+                # Matrícula
+                matricula = getattr(estudiante, 'matricula', '') or ''
+                item_matricula = QTableWidgetItem(matricula)
+                item_matricula.setTextAlignment(Qt.AlignCenter)
+                self.tabla_estudiantes.setItem(fila, 1, item_matricula)
+
+                # CI
+                ci_numero = getattr(estudiante, 'ci_numero', '') or ''
+                ci_expedicion = getattr(estudiante, 'ci_expedicion', '') or ''
+                ci_completo = f"{ci_numero}-{ci_expedicion}" if ci_expedicion else ci_numero
+                item_ci = QTableWidgetItem(ci_completo)
+                self.tabla_estudiantes.setItem(fila, 2, item_ci)
+
+                # Nombres
+                item_nombres = QTableWidgetItem(str(estudiante.nombres))
+                self.tabla_estudiantes.setItem(fila, 3, item_nombres)
+
+                # Apellidos
+                item_apellidos = QTableWidgetItem(str(estudiante.apellidos))
+                self.tabla_estudiantes.setItem(fila, 4, item_apellidos)
+
+                # Carrera
+                carrera = getattr(estudiante, 'carrera', '') or ''
+                item_carrera = QTableWidgetItem(carrera)
+                self.tabla_estudiantes.setItem(fila, 5, item_carrera)
+
+                # Email
+                email = getattr(estudiante, 'email', '') or ''
+                item_email = QTableWidgetItem(email)
+                self.tabla_estudiantes.setItem(fila, 6, item_email)
+
+                # Teléfono
+                telefono = getattr(estudiante, 'telefono', '') or ''
+                item_telefono = QTableWidgetItem(telefono)
+                self.tabla_estudiantes.setItem(fila, 7, item_telefono)
+
+                # Estado
+                estado = "✅ Activo" if estudiante.activo == 1 else "❌ Inactivo"
+                item_estado = QTableWidgetItem(estado)
+                item_estado.setTextAlignment(Qt.AlignCenter)
+
+                # Color según estado
+                if estudiante.activo == 1:
+                    item_estado.setForeground(Qt.darkGreen)
+                else:
+                    item_estado.setForeground(Qt.darkRed)
+
+                self.tabla_estudiantes.setItem(fila, 8, item_estado)
+
+                # Acciones (6 botones con tamaño fijo)
+                widget_acciones = self.crear_widget_acciones(estudiante)
+                self.tabla_estudiantes.setCellWidget(fila, 9, widget_acciones)
+
+            # Ajustar columnas
+            self.tabla_estudiantes.horizontalHeader().setSectionResizeMode(3, QHeaderView.Stretch)  # Nombres
+            self.tabla_estudiantes.horizontalHeader().setSectionResizeMode(4, QHeaderView.Stretch)  # Apellidos
+            self.tabla_estudiantes.horizontalHeader().setSectionResizeMode(5, QHeaderView.Stretch)  # Carrera
+
+            # Columnas fijas
+            self.tabla_estudiantes.setColumnWidth(0, 50)   # ID
+            self.tabla_estudiantes.setColumnWidth(1, 100)  # Matrícula
+            self.tabla_estudiantes.setColumnWidth(2, 100)  # CI
+            self.tabla_estudiantes.setColumnWidth(6, 180)  # Email
+            self.tabla_estudiantes.setColumnWidth(7, 100)  # Teléfono
+            self.tabla_estudiantes.setColumnWidth(8, 100)  # Estado
+
+            # Acciones: 6 botones de 40px + 6 espacios de 3px + stretch = ~258px
+            self.tabla_estudiantes.setColumnWidth(9, 258)  # Acciones (espacio para 6 botones)
+
+        except Exception as e:
+            logger.error(f"Error al mostrar estudiantes en tabla: {e}")
+            self.lbl_estado.setText("❌ Error al mostrar estudiantes")
+
     def crear_widget_acciones(self, estudiante):
         """Crear widget con botones de acciones completas"""
         widget = QWidget()
         layout = QHBoxLayout(widget)
         layout.setContentsMargins(3, 3, 3, 3)
         layout.setSpacing(3)
-
+    
         # Botón 1: Ver Detalles (solo lectura)
         btn_detalles = QPushButton("👁️")
-        btn_detalles.setIconSize(QSize(28, 28))
         btn_detalles.setToolTip("Ver detalles del estudiante (solo lectura)")
         btn_detalles.setFixedSize(40, 28)
         btn_detalles.setStyleSheet("""
@@ -432,7 +607,7 @@ class EstudiantesTab(QWidget):
             }
         """)
         btn_detalles.clicked.connect(lambda: self.ver_detalles_estudiante(estudiante))
-
+    
         # Botón 2: Editar
         btn_editar = QPushButton("✏️")
         btn_editar.setToolTip("Editar estudiante")
@@ -453,7 +628,7 @@ class EstudiantesTab(QWidget):
             }
         """)
         btn_editar.clicked.connect(lambda: self.editar_estudiante(estudiante))
-
+    
         # Botón 3: Matricular en programa
         btn_matricular = QPushButton("🎓")
         btn_matricular.setToolTip("Matricular en programa académico")
@@ -474,7 +649,7 @@ class EstudiantesTab(QWidget):
             }
         """)
         btn_matricular.clicked.connect(lambda: self.matricular_estudiante(estudiante))
-
+    
         # Botón 4: Historial de programas
         btn_programas = QPushButton("📚")
         btn_programas.setToolTip("Ver historial de programas académicos")
@@ -495,7 +670,7 @@ class EstudiantesTab(QWidget):
             }
         """)
         btn_programas.clicked.connect(lambda: self.ver_programas_academicos(estudiante))
-
+    
         # Botón 5: Seguimiento de pagos
         btn_pagos = QPushButton("💰")
         btn_pagos.setToolTip("Seguimiento de pagos y cuotas")
@@ -516,7 +691,7 @@ class EstudiantesTab(QWidget):
             }
         """)
         btn_pagos.clicked.connect(lambda: self.seguimiento_pagos(estudiante))
-
+    
         # Botón 6: Eliminar
         btn_eliminar = QPushButton("🗑️")
         btn_eliminar.setToolTip("Eliminar estudiante")
@@ -537,7 +712,7 @@ class EstudiantesTab(QWidget):
             }
         """)
         btn_eliminar.clicked.connect(lambda: self.eliminar_estudiante(estudiante))
-
+    
         # Agregar todos los botones al layout
         layout.addWidget(btn_detalles)
         layout.addWidget(btn_editar)
@@ -546,537 +721,223 @@ class EstudiantesTab(QWidget):
         layout.addWidget(btn_pagos)
         layout.addWidget(btn_eliminar)
         layout.addStretch()
-
+    
         return widget
     
-    # ==================== MÉTODOS DE BÚSQUEDA SIMPLIFICADOS ====================
-    
-    def buscar_por_ci_simple(self):
-        """Buscar estudiante por CI - Versión simplificada"""
-        ci_numero = self.txtBuscarCI.text().strip()
-        expedicion = self.comboExpedicion.currentText()
-        
-        if not ci_numero:
-            QMessageBox.warning(self, "Advertencia", "Ingrese un número de CI para buscar")
-            return
-        
-        self.current_filter = {'ci_numero': ci_numero}
-        if expedicion != "Todas":
-            self.current_filter['ci_expedicion'] = expedicion
-        
-        self.current_page = 1
-        self.cargar_estudiantes(self.current_filter)
-        self.statusBar.setText(f"Búsqueda por CI: {ci_numero}-{expedicion}")
-    
-    def buscar_por_nombre_simple(self):
-        """Buscar estudiante por nombre - Versión simplificada"""
-        texto = self.txtBuscarNombre.text().strip()
-        
-        if not texto:
-            QMessageBox.warning(self, "Advertencia", "Ingrese un nombre o apellido para buscar")
-            return
-        
-        self.current_filter = {'nombre': texto}
-        self.current_page = 1
-        self.cargar_estudiantes(self.current_filter)
-        self.statusBar.setText(f"Búsqueda por nombre: {texto}")
-    
-    def mostrar_todos(self):
-        """Mostrar todos los estudiantes"""
-        self.txtBuscarCI.clear()
-        self.txtBuscarNombre.clear()
-        self.comboExpedicion.setCurrentIndex(0)
-        
-        self.current_filter = None
-        self.current_page = 1
-        self.cargar_estudiantes()
-        self.statusBar.setText("Mostrando todos los estudiantes")
-    
-    # ==================== MÉTODOS CRUD QUE USAN EL CONTROLADOR ====================
-    
-    def nuevo_estudiante(self):
-        """Abrir formulario para nuevo estudiante usando el controlador"""
-        dialog = EstudianteFormDialog(parent=self)
-        dialog.estudiante_guardado.connect(self.on_estudiante_guardado)
-        dialog.exec()
-    
-    def ver_detalles_estudiante(self, estudiante):
-        """Mostrar diálogo con detalles del estudiante (solo lectura)"""
+    # Métodos que deben existir para los botones
+    def matricular_estudiante(self, estudiante):
+        """Matricular estudiante en programa académico"""
         try:
-            print(f"DEBUG ver_detalles_estudiante: Abriendo diálogo para estudiante")
-            
-            # Obtener ID del estudiante
-            if hasattr(estudiante, 'id'):
-                estudiante_id = estudiante.id
-            else:
-                estudiante_id = estudiante
-            
-            print(f"DEBUG: Usando ID {estudiante_id}")
-            
-            from app.views.dialogs.estudiante_form_dialog import EstudianteFormDialog
-            from app.models.estudiante_model import EstudianteModel
-            
-            # Obtener datos frescos desde BD
-            estudiante_bd = EstudianteModel.find_by_id(estudiante_id)
-            if not estudiante_bd:
-                QMessageBox.warning(self, "Error", "Estudiante no encontrado")
-                return
-            
-            # Crear diccionario con datos
-            estudiante_data = {
-                'id': estudiante_bd.id,
-                'ci_numero': estudiante_bd.ci_numero,
-                'ci_expedicion': estudiante_bd.ci_expedicion,
-                'nombres': estudiante_bd.nombres,
-                'apellidos': estudiante_bd.apellidos,
-                'fecha_nacimiento': estudiante_bd.fecha_nacimiento,
-                'telefono': getattr(estudiante_bd, 'telefono', ''),
-                'email': getattr(estudiante_bd, 'email', ''),
-                'universidad_egreso': getattr(estudiante_bd, 'universidad_egreso', ''),
-                'profesion': getattr(estudiante_bd, 'profesion', ''),
-                'fotografia_path': getattr(estudiante_bd, 'fotografia_path', None),
-                'activo': getattr(estudiante_bd, 'activo', 1)
-            }
-            
-            # Abrir diálogo en modo lectura
-            dialog = EstudianteFormDialog(
-                estudiante_data=estudiante_data,
-                modo_lectura=True,
-                parent=self
+            QMessageBox.information(
+                self, 
+                "Matricular Estudiante", 
+                f"Matriculando a {estudiante.nombres} {estudiante.apellidos} en programa académico\n"
+                f"(Funcionalidad por implementar)"
             )
-            
-            # Conectar señales
-            dialog.estudiante_editar.connect(lambda data: self.editar_estudiante(data['id']))
-            dialog.estudiante_inscribir.connect(self.on_inscribir_desde_detalles)
-            dialog.estudiante_borrar.connect(self.on_borrar_desde_detalles)
-            
-            dialog.exec()
-            
         except Exception as e:
-            print(f"ERROR en ver_detalles_estudiante: {e}")
-            logger.error(f"Error en ver_detalles_estudiante: {e}")
-            QMessageBox.critical(self, "Error", f"Error al mostrar detalles: {str(e)}")
-            print(f"ERROR en ver_detalles_estudiante: {e}")
-            logger.error(f"Error en ver_detalles_estudiante: {e}")
-            QMessageBox.critical(self, "Error", f"Error al mostrar detalles: {str(e)}")
-
-    def editar_estudiante(self, estudiante):
-        """Abrir diálogo para editar un estudiante"""
+            logger.error(f"Error al matricular estudiante: {e}")
+            QMessageBox.critical(self, "Error", f"Error al matricular estudiante: {str(e)}")
+    
+    def ver_programas_academicos(self, estudiante):
+        """Ver historial de programas académicos del estudiante"""
         try:
-            print(f"DEBUG editar_estudiante: Abriendo diálogo para estudiante")
-
-            # Asegurarnos de que tenemos el ID
-            if hasattr(estudiante, 'id'):
-                estudiante_id = estudiante.id
-            elif isinstance(estudiante, dict) and 'id' in estudiante:
-                estudiante_id = estudiante['id']
-            else:
-                estudiante_id = estudiante  # Asumir que ya es un ID
-
-            print(f"DEBUG: Usando ID {estudiante_id}")
-
-            from app.views.dialogs.estudiante_form_dialog import EstudianteFormDialog
-
-            # Abrir diálogo en modo edición
-            dialog = EstudianteFormDialog(
-                estudiante_id=estudiante_id,  # Solo pasamos el ID
-                modo_lectura=False,           # Modo edición
-                parent=self
+            QMessageBox.information(
+                self, 
+                "Historial de Programas", 
+                f"Mostrando historial de programas para {estudiante.nombres} {estudiante.apellidos}\n"
+                f"(Funcionalidad por implementar)"
             )
-
-            # Conectar señales
-            dialog.estudiante_mostrar_detalles.connect(self.mostrar_estudiante_en_modo_lectura)
-
-            if dialog.exec() == QDialog.DialogCode.Accepted:
-                print(f"DEBUG editar_estudiante - Diálogo cerrado")
-                self.cargar_estudiantes()
-
         except Exception as e:
-            logger.error(f"Error al editar estudiante: {e}")
-            print(f"ERROR detallado: {e}")
-            import traceback
-            traceback.print_exc()
-            QMessageBox.critical(self, "Error", f"Error al editar estudiante: {str(e)}")
+            logger.error(f"Error al ver programas académicos: {e}")
+            QMessageBox.critical(self, "Error", f"Error al ver programas académicos: {str(e)}")
     
-    def on_doble_click_tabla(self, index):
-        """Manejar doble click en la tabla"""
-        row = index.row()
-        if row < len(self.estudiantes_cache):
-            self.editar_estudiante(self.estudiantes_cache[row])
-    
-    def on_estudiante_guardado(self, datos):
-        """Manejador cuando se guarda un estudiante - Abre diálogo de detalles"""
+    def seguimiento_pagos(self, estudiante):
+        """Seguimiento de pagos y cuotas del estudiante"""
         try:
-            # Determinar si es creación o edición
-            es_nuevo = 'id' not in datos
-            
-            print(f"DEBUG on_estudiante_guardado:")
-            print(f"  - Es nuevo: {es_nuevo}")
-            print(f"  - Datos recibidos: {datos}")
-            print(f"  - fotografia_path en datos: {datos.get('fotografia_path')}")
-            
-            try:
-                if es_nuevo:
-                    # CREAR NUEVO ESTUDIANTE
-                    from app.models.estudiante_model import EstudianteModel
-                    
-                    # Asegurar que fotografia_path esté incluido
-                    datos_creacion = datos.copy()
-                    
-                    # Si no hay fotografia_path, establecer como None explícitamente
-                    if 'fotografia_path' not in datos_creacion:
-                        datos_creacion['fotografia_path'] = None
-                    
-                    print(f"  - Creando estudiante con datos: {datos_creacion}")
-                    
-                    estudiante_creado = EstudianteModel.crear_estudiante(datos_creacion)
-                    
-                    # Guardar el ID en los datos
-                    datos['id'] = estudiante_creado.id
-                    
-                    # Obtener el objeto completo del estudiante creado
-                    estudiante = estudiante_creado
-                    mensaje_titulo = "✅ Estudiante Creado"
-                    mensaje_texto = "Estudiante creado exitosamente"
-                    
-                    print(f"  - ✅ Estudiante creado ID: {estudiante.id}")
-                    print(f"  - fotografia_path guardado: {getattr(estudiante, 'fotografia_path', 'No tiene')}")
-                    
-                else:
-                    # ACTUALIZAR ESTUDIANTE EXISTENTE
-                    from app.models.estudiante_model import EstudianteModel
-                    estudiante = EstudianteModel.find_by_id(datos['id'])
-                    
-                    if estudiante:
-                        print(f"  - Estudiante encontrado ID: {estudiante.id}")
-                        print(f"  - fotografia_path actual: {getattr(estudiante, 'fotografia_path', 'No tiene')}")
-                        print(f"  - fotografia_path nuevo: {datos.get('fotografia_path')}")
-                        
-                        # Actualizar TODOS los campos que vienen en datos
-                        for campo, valor in datos.items():
-                            if campo != 'id':  # No actualizar el ID
-                                if hasattr(estudiante, campo):
-                                    print(f"  - Actualizando campo '{campo}': {valor}")
-                                    setattr(estudiante, campo, valor)
-                                else:
-                                    print(f"  - ADVERTENCIA: El modelo no tiene campo '{campo}'")
-                        
-                        print(f"  - Guardando estudiante...")
-                        estudiante.save()
-                        print(f"  - ✅ Estudiante actualizado")
-                        
-                        # Verificar que se guardó
-                        estudiante_verificado = EstudianteModel.find_by_id(datos['id'])
-                        if estudiante_verificado:
-                            print(f"  - Verificación - fotografia_path después de guardar: {getattr(estudiante_verificado, 'fotografia_path', 'No tiene')}")
-                    
-                    mensaje_titulo = "✅ Estudiante Actualizado"
-                    mensaje_texto = "Estudiante actualizado exitosamente"
-                
-                # Recargar la tabla
-                self.cargar_estudiantes(self.current_filter)
-                
-                # Cerrar el diálogo de edición/creación actual
-                # (Esto se hace automáticamente cuando se emite la señal y se llama a accept())
-                
-                # Mostrar diálogo de detalles en modo lectura
-                self.mostrar_detalles_despues_de_guardar(estudiante, mensaje_titulo, mensaje_texto)
-                
-            except ValueError as e:
-                print(f"  - ❌ Error de validación: {e}")
-                QMessageBox.warning(self, "Error de Validación", str(e))
-                return
-            except Exception as e:
-                print(f"  - ❌ Error: {e}")
-                import traceback
-                traceback.print_exc()
-                QMessageBox.critical(self, "Error", f"Error al guardar estudiante: {str(e)}")
-                return
-                
-        except Exception as e:
-            print(f"  - ❌ Error inesperado: {e}")
-            QMessageBox.critical(self, "Error", f"Error inesperado: {str(e)}")
-            logger.error(f"Error en on_estudiante_guardado: {e}")    
-    
-    def mostrar_detalles_despues_de_guardar(self, estudiante, titulo, mensaje):
-        """Mostrar diálogo de detalles después de guardar"""
-        try:
-            # Preparar datos para el diálogo de detalles
-            estudiante_data = {
-                'id': estudiante.id,
-                'ci_numero': estudiante.ci_numero,
-                'ci_expedicion': estudiante.ci_expedicion,
-                'nombres': estudiante.nombres,
-                'apellidos': estudiante.apellidos,
-                'fecha_nacimiento': estudiante.fecha_nacimiento,
-                'telefono': estudiante.telefono,
-                'email': estudiante.email,
-                'universidad_egreso': estudiante.universidad_egreso,
-                'profesion': estudiante.profesion,
-                'activo': estudiante.activo
-            }
-            
-            # Crear diálogo en modo lectura
-            dialog = EstudianteFormDialog(
-                estudiante_data=estudiante_data, 
-                modo_lectura=True, 
-                parent=self
+            QMessageBox.information(
+                self, 
+                "Seguimiento de Pagos", 
+                f"Mostrando seguimiento de pagos para {estudiante.nombres} {estudiante.apellidos}\n"
+                f"(Funcionalidad por implementar)"
             )
-            
-            # Conectar las señales para los botones especiales
-            dialog.estudiante_inscribir.connect(self.on_inscribir_estudiante)
-            dialog.estudiante_borrar.connect(self.on_borrar_estudiante_desde_dialog)
-            
-            # Mostrar un breve mensaje antes de abrir los detalles
-            QTimer.singleShot(100, lambda: dialog.exec())
-            
         except Exception as e:
-            logger.error(f"Error al mostrar detalles después de guardar: {e}")
-            # Si falla, mostrar mensaje tradicional
-            QMessageBox.information(self, titulo, mensaje)
+            logger.error(f"Error al ver seguimiento de pagos: {e}")
+            QMessageBox.critical(self, "Error", f"Error al ver seguimiento de pagos: {str(e)}")
     
     def eliminar_estudiante(self, estudiante):
-        """Eliminar estudiante con confirmación"""
-        respuesta = QMessageBox.question(
-            self, "🗑️ Confirmar Eliminación",
-            f"¿Está seguro de eliminar al estudiante?\n\n"
-            f"Nombre: {estudiante.nombre_completo}\n"
-            f"CI: {estudiante.ci_numero}-{estudiante.ci_expedicion}\n\n"
-            f"⚠️ Esta acción no se puede deshacer.",
-            QMessageBox.Yes | QMessageBox.No,
-            QMessageBox.No
-        )
-        
-        if respuesta == QMessageBox.Yes:
-            try:
-                # Eliminar usando el modelo
-                success = EstudianteModel.delete(estudiante.id)
-                if success:
-                    QMessageBox.information(self, "✅ Éxito", "Estudiante eliminado correctamente")
-                    self.cargar_estudiantes(self.current_filter)
-                else:
-                    QMessageBox.warning(self, "Error", "No se pudo eliminar el estudiante")
-                    
-            except Exception as e:
-                QMessageBox.critical(self, "Error", f"Error al eliminar: {str(e)}")
-    
-    # ==================== MÉTODOS DE PAGINACIÓN SIMPLIFICADOS ====================
-    
-    def actualizar_controles_paginacion(self):
-        """Actualizar controles de paginación - Versión simplificada"""
-        if self.records_per_page == 0:
-            self.total_pages = 1
-        else:
-            self.total_pages = max(1, (self.total_records + self.records_per_page - 1) // self.records_per_page)
-        
-        self.lblPaginaInfo.setText(f"Página {self.current_page} de {self.total_pages}")
-        
-        # Habilitar/deshabilitar botones
-        self.btnPrimera.setEnabled(self.current_page > 1)
-        self.btnAnterior.setEnabled(self.current_page > 1)
-        self.btnSiguiente.setEnabled(self.current_page < self.total_pages)
-        self.btnUltima.setEnabled(self.current_page < self.total_pages)
-    
-    def actualizar_contador(self):
-        """Actualizar contador de registros"""
-        if self.total_records == 0:
-            self.lblContador.setText("No hay estudiantes")
-        else:
-            if self.records_per_page == 0:
-                inicio = 1
-                fin = self.total_records
-            else:
-                inicio = (self.current_page - 1) * self.records_per_page + 1
-                fin = min(self.current_page * self.records_per_page, self.total_records)
+        """Eliminar estudiante del sistema"""
+        try:
+            respuesta = QMessageBox.question(
+                self,
+                "Confirmar Eliminación",
+                f"¿Está seguro de eliminar este estudiante?\n\n"
+                f"Estudiante: {estudiante.nombres} {estudiante.apellidos}\n"
+                f"Matrícula: {getattr(estudiante, 'matricula', 'N/A')}\n\n"
+                f"⚠️ Esta acción no se puede deshacer.",
+                QMessageBox.Yes | QMessageBox.No,
+                QMessageBox.No
+            )
             
-            self.lblContador.setText(f"Mostrando {inicio}-{fin} de {self.total_records} estudiantes")
+            if respuesta == QMessageBox.Yes:
+                # Eliminar de la base de datos
+                estudiante.delete()
+                
+                # Actualizar tabla
+                self.cargar_estudiantes(self.current_filter)
+                
+                QMessageBox.information(self, "✅ Éxito", "Estudiante eliminado correctamente")
+                
+        except Exception as e:
+            logger.error(f"Error al eliminar estudiante: {e}")
+            QMessageBox.critical(self, "Error", f"Error al eliminar estudiante: {str(e)}")
     
-    def cambiar_pagina(self, pagina):
-        """Cambiar a página específica"""
-        if 1 <= pagina <= self.total_pages:
-            self.current_page = pagina
-            self.cargar_estudiantes(self.current_filter)
+    # ============================================================================
+    # MÉTODOS DE PAGINACIÓN
+    # ============================================================================
     
-    def pagina_anterior(self):
-        """Ir a página anterior"""
-        if self.current_page > 1:
-            self.current_page -= 1
-            self.cargar_estudiantes(self.current_filter)
-    
-    def pagina_siguiente(self):
-        """Ir a página siguiente"""
-        if self.current_page < self.total_pages:
-            self.current_page += 1
-            self.cargar_estudiantes(self.current_filter)
-    
-    def ultima_pagina(self):
-        """Ir a última página"""
-        self.cambiar_pagina(self.total_pages)
-    
-    def cambiar_registros_pagina(self, texto):
-        """Cambiar registros por página"""
-        if texto == "Todos":
-            self.records_per_page = 0
-        else:
-            try:
-                self.records_per_page = int(texto)
-            except:
-                self.records_per_page = 25
+    def actualizar_paginacion(self):
+        """Actualizar controles de paginación y mostrar página actual"""
+        # Calcular paginación
+        total_estudiantes = len(self.estudiantes_filtrados_actuales)
+        self.total_pages = max(1, (total_estudiantes + self.records_per_page - 1) // self.records_per_page)
         
-        self.current_page = 1
-        self.cargar_estudiantes(self.current_filter)
-
-    # ================= Métodos manejadores en EstudiantesTab =================
-
-    def on_inscribir_estudiante(self, estudiante_data):
-        """Manejador para inscribir estudiante desde diálogo de detalles"""
+        # Ajustar página actual si es necesario
+        if self.current_page > self.total_pages:
+            self.current_page = self.total_pages
+        
+        # Calcular índices para la página actual
+        start_idx = (self.current_page - 1) * self.records_per_page
+        end_idx = min(start_idx + self.records_per_page, total_estudiantes)
+        
+        # Obtener estudiantes para la página actual
+        self.estudiantes_paginados = self.estudiantes_filtrados_actuales[start_idx:end_idx]
+        
+        # Actualizar botones
+        self.btn_primera.setEnabled(self.current_page > 1)
+        self.btn_anterior.setEnabled(self.current_page > 1)
+        self.btn_siguiente.setEnabled(self.current_page < self.total_pages)
+        self.btn_ultima.setEnabled(self.current_page < self.total_pages)
+        
+        # Actualizar información
+        self.lbl_info_pagina.setText(f"Página {self.current_page} de {self.total_pages}")
+        
+        # Mostrar estudiantes de la página actual
+        self.mostrar_estudiantes_en_tabla(self.estudiantes_paginados)
+        
+        # Actualizar contador
+        mostrar_texto = f"Mostrando {len(self.estudiantes_paginados)} de {total_estudiantes} registros"
+        if total_estudiantes > 0:
+            mostrar_texto += f" ({start_idx + 1}-{end_idx})"
+        self.lbl_contador.setText(mostrar_texto)
+    
+    def cambiar_pagina(self, nueva_pagina):
+        """Cambiar a una nueva página"""
+        if 1 <= nueva_pagina <= self.total_pages and nueva_pagina != self.current_page:
+            self.current_page = nueva_pagina
+            self.actualizar_paginacion()
+    
+    # ============================================================================
+    # MÉTODOS PRINCIPALES DE GESTIÓN (ESQUELETO - IMPLEMENTAR SEGÚN NECESIDAD)
+    # ============================================================================
+    
+    def agregar_nuevo_estudiante(self):
+        """Abrir diálogo para nuevo estudiante"""
         try:
-            # Obtener el objeto estudiante completo
-            from app.models.estudiante_model import EstudianteModel
-            estudiante = EstudianteModel.find_by_id(estudiante_data['id'])
-
-            if estudiante:
-                # Usar el método matricular_estudiante que YA funciona
-                # Este método usa la clase MatricularEstudianteDialog que SÍ existe
-                self.matricular_estudiante(estudiante)
-
-        except Exception as e:
-            logger.error(f"Error al inscribir estudiante desde diálogo: {e}")
-            QMessageBox.critical(self, "Error", f"Error al inscribir estudiante: {str(e)}")
-
-    def on_borrar_estudiante_desde_dialog(self, estudiante_data):
-        """Manejador para borrar estudiante desde diálogo de detalles"""
-        try:
-            # Obtener el objeto estudiante completo
-            estudiante = EstudianteModel.find_by_id(estudiante_data['id'])
-            if estudiante:
-                # Llamar al método existente de eliminación
-                self.eliminar_estudiante(estudiante)
-        except Exception as e:
-            logger.error(f"Error al borrar estudiante desde diálogo: {e}")
-            QMessageBox.critical(self, "Error", f"Error al borrar estudiante: {str(e)}")
-
-    def on_editar_desde_modo_lectura(self, datos_estudiante):
-        """
-        Manejador cuando se presiona "Editar" desde el modo lectura
-
-        Args:
-            datos_estudiante: Diccionario con datos del estudiante
-        """
-        try:
-            print(f"DEBUG on_editar_desde_modo_lectura:")
-            print(f"  - Datos recibidos: {datos_estudiante}")
-
-            estudiante_id = datos_estudiante.get('id')
-            if not estudiante_id:
-                print(f"  - ERROR: No hay ID en los datos")
-                return
-
-            # Cerrar el diálogo de lectura actual
-            # (Se cerrará automáticamente cuando se emita la señal)
-
-            # Abrir diálogo de edición
-            self.editar_estudiante(estudiante_id)
-
-        except Exception as e:
-            print(f"ERROR en on_editar_desde_modo_lectura: {e}")
-            logger.error(f"Error en on_editar_desde_modo_lectura: {e}")
-            QMessageBox.critical(self, "Error", f"Error al editar estudiante: {str(e)}")
-
-    def matricular_estudiante(self, estudiante):
-        """Abrir diálogo mejorado de matrícula"""
-        try:
-            # Verificar si el estudiante puede matricularse
-            if not estudiante.activo:
-                QMessageBox.warning(self, "Advertencia", 
-                    "El estudiante está inactivo y no puede matricularse")
-                return
-
-            # Abrir diálogo de matrícula
-            dialog = Ui_MatricularEstudianteDialog(estudiante.id, parent=self)
-            dialog.matricula_realizada.connect(self.on_matricula_realizada)
-            dialog.exec()
-
-        except Exception as e:
-            logger.error(f"Error al abrir matrícula: {e}")
-            QMessageBox.critical(self, "Error", f"Error: {str(e)}")
-
-    def on_matricula_realizada(self, datos):
-        """Manejador cuando se completa una matrícula"""
-        matricula_id = datos.get('matricula_id')
-        QMessageBox.information(self, "✅ Éxito", 
-            f"Matrícula registrada exitosamente\nID: {matricula_id}")
-
-        # Opcional: Recargar datos
-        self.cargar_estudiantes(self.current_filter)
-
-    def on_inscribir_desde_detalles(self, datos_estudiante):
-        """Manejador para inscribir estudiante desde modo lectura"""
-        try:
-            estudiante_id = datos_estudiante.get('id')
-            if estudiante_id:
-                print(f"DEBUG: Inscribiendo estudiante ID {estudiante_id}")
-                # Aquí puedes llamar a tu método para abrir diálogo de inscripción
-                # self.abrir_dialogo_inscripcion(estudiante_id)
-        except Exception as e:
-            logger.error(f"Error al inscribir desde detalles: {e}")
-
-    def on_borrar_desde_detalles(self, datos_estudiante):
-        """Manejador para borrar estudiante desde modo lectura"""
-        try:
-            estudiante_id = datos_estudiante.get('id')
-            if estudiante_id:
-                print(f"DEBUG: Borrando estudiante ID {estudiante_id}")
-                # Aquí puedes llamar a tu método para borrar estudiante
-                # self.borrar_estudiante(estudiante_id)
-        except Exception as e:
-            logger.error(f"Error al borrar desde detalles: {e}")
-
-    def mostrar_estudiante_en_modo_lectura(self, estudiante_id):
-        """Mostrar estudiante en modo lectura después de guardar"""
-        try:
-            print(f"DEBUG mostrar_estudiante_en_modo_lectura: ID {estudiante_id}")
-
+            # Importar aquí para evitar importación circular
             from app.views.dialogs.estudiante_form_dialog import EstudianteFormDialog
-            from app.models.estudiante_model import EstudianteModel
-
-            # Obtener datos frescos desde BD
-            estudiante = EstudianteModel.find_by_id(estudiante_id)
-            if not estudiante:
-                print(f"ERROR: Estudiante {estudiante_id} no encontrado")
-                return
-
-            # Crear diccionario con datos
+            
+            dialog = EstudianteFormDialog(
+                estudiante_id=None,
+                modo_lectura=False,
+                parent=self
+            )
+            
+            if dialog.exec():
+                self.cargar_estudiantes(self.current_filter)
+                
+        except ImportError:
+            QMessageBox.information(
+                self, 
+                "Funcionalidad no implementada", 
+                "El formulario de estudiante aún no está implementado"
+            )
+        except Exception as e:
+            logger.error(f"Error al crear estudiante: {e}")
+            QMessageBox.critical(self, "Error", f"Error al crear estudiante: {str(e)}")
+    
+    def ver_detalles_estudiante(self, estudiante):
+        """Mostrar diálogo con detalles del estudiante"""
+        try:
+            from app.views.dialogs.estudiante_form_dialog import EstudianteFormDialog
+            
             estudiante_data = {
                 'id': estudiante.id,
-                'ci_numero': estudiante.ci_numero,
-                'ci_expedicion': estudiante.ci_expedicion,
                 'nombres': estudiante.nombres,
                 'apellidos': estudiante.apellidos,
-                'fecha_nacimiento': estudiante.fecha_nacimiento,
+                'ci_numero': getattr(estudiante, 'ci_numero', ''),
+                'ci_expedicion': getattr(estudiante, 'ci_expedicion', ''),
+                'matricula': getattr(estudiante, 'matricula', ''),
+                'carrera': getattr(estudiante, 'carrera', ''),
                 'telefono': getattr(estudiante, 'telefono', ''),
                 'email': getattr(estudiante, 'email', ''),
-                'universidad_egreso': getattr(estudiante, 'universidad_egreso', ''),
-                'profesion': getattr(estudiante, 'profesion', ''),
-                'fotografia_path': getattr(estudiante, 'fotografia_path', None),
                 'activo': getattr(estudiante, 'activo', 1)
             }
-
-            # Abrir diálogo en modo lectura
+            
             dialog = EstudianteFormDialog(
                 estudiante_data=estudiante_data,
                 modo_lectura=True,
                 parent=self
             )
-
-            # Conectar señales
-            dialog.estudiante_editar.connect(lambda data: self.editar_estudiante(data['id']))
-            dialog.estudiante_inscribir.connect(self.on_inscribir_desde_detalles)
-            dialog.estudiante_borrar.connect(self.on_borrar_desde_detalles)
-
+            
             dialog.exec()
-
+            
+        except ImportError:
+            QMessageBox.information(
+                self, 
+                "Funcionalidad no implementada", 
+                f"Vista de detalles para estudiante ID {estudiante.id}\n"
+                f"(Por implementar)"
+            )
         except Exception as e:
-            print(f"ERROR mostrando estudiante en modo lectura: {e}")
-            logger.error(f"Error mostrando estudiante en modo lectura: {e}")
-
+            logger.error(f"Error al mostrar detalles: {e}")
+            QMessageBox.critical(self, "Error", f"Error al mostrar detalles: {str(e)}")
+    
+    def editar_estudiante(self, estudiante_id):
+        """Abrir diálogo para editar un estudiante"""
+        try:
+            from app.views.dialogs.estudiante_form_dialog import EstudianteFormDialog
+            
+            dialog = EstudianteFormDialog(
+                estudiante_id=estudiante_id,
+                modo_lectura=False,
+                parent=self
+            )
+            
+            if dialog.exec():
+                self.cargar_estudiantes(self.current_filter)
+        
+        except ImportError:
+            QMessageBox.information(
+                self, 
+                "Funcionalidad no implementada", 
+                f"Edición para estudiante ID {estudiante_id}\n"
+                f"(Por implementar)"
+            )
+        except Exception as e:
+            logger.error(f"Error al editar estudiante: {e}")
+            QMessageBox.critical(self, "Error", f"Error al editar estudiante: {str(e)}")
+    
+    # ============================================================================
+    # MÉTODOS AUXILIARES
+    # ============================================================================
+    
+    def actualizar_interfaz(self):
+        """Actualizar la interfaz después de cambios"""
+        self.cargar_estudiantes(self.current_filter)
+    
+    def obtener_estudiante_por_id(self, estudiante_id):
+        """Obtener estudiante por ID desde los datos cargados"""
+        for estudiante in self.estudiantes_data:
+            if estudiante.id == estudiante_id:
+                return estudiante
+        return None
