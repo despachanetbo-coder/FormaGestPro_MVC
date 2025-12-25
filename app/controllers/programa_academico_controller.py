@@ -215,26 +215,82 @@ class ProgramaAcademicoController:
         limite: int = 100
     ) -> List[ProgramaAcademicoModel]:
         """
-        Obtener todos los programas académicos con filtros
-        
-        Args:
-            estado: Filtrar por estado
-            promocion_activa: Filtrar por promoción activa
-            tutor_id: Filtrar por tutor
-            limite: Límite de resultados
-            
-        Returns:
-            Lista de programas académicos
+        Obtener todos los programas académicos con filtros - VERSIÓN CORREGIDA
         """
         try:
-            return ProgramaAcademicoModel.get_all(
-                estado=estado,
-                promocion_activa=promocion_activa,
-                tutor_id=tutor_id,
-                limite=limite
-            )
+            # Obtener TODOS los programas sin filtros iniciales
+            # Primero, intenta el método que sabemos que funciona
+            todos = []
+            
+            # Método 1: get_all() sin parámetros
+            if hasattr(ProgramaAcademicoModel, 'get_all'):
+                try:
+                    todos = ProgramaAcademicoModel.get_all()
+                    logger.debug(f"get_all() retornó {len(todos)} programas")
+                except TypeError as e:
+                    # Si falla con parámetros, intentar sin ellos
+                    logger.warning(f"get_all() falló: {e}. Intentando alternativa...")
+                    # Podría ser que get_all no acepte argumentos
+                    import inspect
+                    sig = inspect.signature(ProgramaAcademicoModel.get_all)
+                    if len(sig.parameters) == 0:
+                        todos = ProgramaAcademicoModel.get_all()
+                    else:
+                        # Intentar otro método
+                        if hasattr(ProgramaAcademicoModel, 'query'):
+                            todos = ProgramaAcademicoModel.query.all()
+            
+            # Método 2: Si no funciona get_all, usar query directamente
+            elif hasattr(ProgramaAcademicoModel, 'query'):
+                todos = ProgramaAcademicoModel.query.all()
+                logger.debug(f"query.all() retornó {len(todos)} programas")
+            
+            # Método 3: Buscar otro método
+            elif hasattr(ProgramaAcademicoModel, 'find_all'):
+                todos = ProgramaAcademicoModel.find_all()
+                logger.debug(f"find_all() retornó {len(todos)} programas")
+            
+            if not todos:
+                logger.warning("No se obtuvieron programas")
+                return []
+            
+            # Ahora aplicar filtros MANUALMENTE
+            resultados = []
+            for programa in todos:
+                try:
+                    # Filtrar por estado
+                    if estado is not None:
+                        programa_estado = getattr(programa, 'estado', '')
+                        if programa_estado != estado:
+                            continue
+                        
+                    # Filtrar por promoción activa
+                    if promocion_activa is not None:
+                        programa_promocion = getattr(programa, 'promocion_activa', False)
+                        if programa_promocion != promocion_activa:
+                            continue
+                        
+                    # Filtrar por tutor
+                    if tutor_id is not None:
+                        programa_tutor_id = getattr(programa, 'tutor_id', None)
+                        if programa_tutor_id != tutor_id:
+                            continue
+                        
+                    resultados.append(programa)
+                    
+                    # Limitar resultados
+                    if len(resultados) >= limite:
+                        break
+                        
+                except Exception as e:
+                    logger.warning(f"Error procesando programa: {e}")
+                    continue
+                
+            logger.debug(f"Programas después de filtrar: {len(resultados)}")
+            return resultados
+            
         except Exception as e:
-            logger.error(f"Error al obtener programas académicos: {e}")
+            logger.error(f"Error al obtener programas académicos: {e}", exc_info=True)
             return []
     
     def obtener_disponibles(self) -> List[ProgramaAcademicoModel]:

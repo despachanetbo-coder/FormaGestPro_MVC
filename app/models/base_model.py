@@ -55,6 +55,7 @@ class BaseModel:
         self.id = cursor.lastrowid
         logger.info(f"✅ Insertado en {self.TABLE_NAME} con ID: {self.id}")
         return self.id
+        
     
     def update(self) -> int:
         """Actualiza el objeto en la base de datos"""
@@ -208,8 +209,9 @@ class BaseModel:
     @classmethod
     def get_all(cls):
         """Obtener todos los registros"""
-        from database.database import db
         
         query = f"SELECT * FROM {cls.TABLE_NAME}"
         rows = db.fetch_all(query)
         return [cls(**row) for row in rows]
+    
+    

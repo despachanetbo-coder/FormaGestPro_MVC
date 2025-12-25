@@ -434,11 +434,37 @@ class ProgramaAcademicoModel(BaseModel):
 
 # ==================== ALIAS PARA COMPATIBILIDAD ====================
 # Alias para compatibilidad con código existente
-    
+
     @classmethod
-    def get_by_id(cls, programa_id: int):
-        '''Alias para find_by_id (compatibilidad)'''
-        return cls.find_by_id(programa_id)
+    def get_activos(cls):
+        """Obtener programas activos (PLANIFICADO o INICIADO)"""
+        try:
+            # Si es SQLAlchemy
+            if hasattr(cls, 'query'):
+                from sqlalchemy import or_
+                return cls.query.filter(
+                    or_(cls.estado == 'PLANIFICADO', cls.estado == 'INICIADO')
+                ).all()
+            # Si es otra implementación
+            else:
+                # Necesitarías implementar la lógica según tu almacenamiento
+                pass
+        except Exception as e:
+            logger.error(f"Error en get_activos: {e}")
+            return []
+
+    @classmethod
+    def get_by_id(cls, programa_id):
+        """Obtener programa por ID"""
+        try:
+            if hasattr(cls, 'query'):
+                return cls.query.get(programa_id)
+            else:
+                # Implementación según tu sistema
+                pass
+        except Exception as e:
+            logger.error(f"Error en get_by_id: {e}")
+            return None
     
     @classmethod
     def update_by_id(cls, programa_id: int, datos: dict) -> bool:

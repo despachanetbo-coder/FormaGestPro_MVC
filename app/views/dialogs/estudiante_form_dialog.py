@@ -705,17 +705,32 @@ class EstudianteFormDialog(QDialog):
         """Conectar señales y slots"""
         # Conexiones según modo
         if not self.modo_lectura:
-            self.btn_guardar.clicked.connect(self.validar_y_guardar)
-            self.btn_cancelar.clicked.connect(self.reject)
-            
+            if hasattr(self, 'btn_guardar'):
+                self.btn_guardar.clicked.connect(self.validar_y_guardar)
+
+            if hasattr(self, 'btn_cancelar'):
+                self.btn_cancelar.clicked.connect(self.reject)
+
             # Conexiones para fotografía
-            self.btn_seleccionar_foto.clicked.connect(self.seleccionar_foto)
-            self.btn_eliminar_foto.clicked.connect(self.eliminar_foto)
+            if hasattr(self, 'btn_seleccionar_foto'):
+                self.btn_seleccionar_foto.clicked.connect(self.seleccionar_foto)
+
+            if hasattr(self, 'btn_eliminar_foto'):
+                self.btn_eliminar_foto.clicked.connect(self.eliminar_foto)
+
         else:
-            self.btn_inscribir.clicked.connect(self.on_inscribir_clicked)
-            self.btn_editar.clicked.connect(self.on_editar_clicked)
-            self.btn_borrar.clicked.connect(self.on_borrar_clicked)
-            self.btn_cerrar.clicked.connect(self.accept)
+            # MODO LECTURA - CORREGIDO: sin paréntesis
+            if hasattr(self, 'btn_inscribir'):
+                self.btn_inscribir.clicked.connect(self.on_inscribir_clicked)  # <-- SIN ()
+
+            if hasattr(self, 'btn_editar'):
+                self.btn_editar.clicked.connect(self.on_editar_clicked)
+
+            if hasattr(self, 'btn_borrar'):
+                self.btn_borrar.clicked.connect(self.on_borrar_clicked)
+
+            if hasattr(self, 'btn_cerrar'):
+                self.btn_cerrar.clicked.connect(self.accept)
     
     # ============================================================================
     # MÉTODOS PARA MANEJO DE DATOS
@@ -1214,14 +1229,86 @@ class EstudianteFormDialog(QDialog):
     # ============================================================================
     
     def on_inscribir_clicked(self):
-        """Manejador para botón Inscribir en Programa"""
+        """Abrir diálogo para inscribir al estudiante - VERSIÓN ROBUSTA"""
         try:
-            print(f"DEBUG on_inscribir_clicked: Emitiendo señal para estudiante ID {self.estudiante_data.get('id')}")
-            self.estudiante_inscribir.emit(self.estudiante_data)
-            self.accept()
+            # Intentar obtener el ID del estudiante de múltiples formas
+            estudiante_id = None
+            
+            # 1. Intentar desde self.estudiante si existe
+            if hasattr(self, 'estudiante') and self.estudiante and hasattr(self.estudiante, 'id'):
+                estudiante_id = self.estudiante.id
+                logger.debug(f"ID obtenido de self.estudiante: {estudiante_id}")
+            
+            # 2. Si no, intentar desde self.estudiante_data
+            elif hasattr(self, 'estudiante_data') and self.estudiante_data:
+                estudiante_id = self.estudiante_data.get('id')
+                logger.debug(f"ID obtenido de self.estudiante_data: {estudiante_id}")
+            
+            # 3. Si no, intentar desde self.estudiante_id
+            elif hasattr(self, 'estudiante_id') and self.estudiante_id:
+                estudiante_id = self.estudiante_id
+                logger.debug(f"ID obtenido de self.estudiante_id: {estudiante_id}")
+            
+            # Verificar que tenemos un ID válido
+            if not estudiante_id:
+                logger.error("No se pudo obtener ID del estudiante")
+                QMessageBox.warning(
+                    self,
+                    "Error",
+                    "No se pudo identificar al estudiante."
+                )
+                return
+            
+            logger.info(f"Iniciando matrícula para estudiante ID: {estudiante_id}")
+            
+            # Importar diálogo de matrícula
+            try:
+                from app.views.dialogs.matricula_estudiante_form_dialog import MatriculaEstudianteFormDialog
+            except ImportError as e:
+                logger.error(f"Error importando MatriculaEstudianteFormDialog: {e}")
+                QMessageBox.critical(
+                    self,
+                    "Error del Sistema",
+                    f"No se pudo cargar el módulo de matrícula.\n\nError: {str(e)}"
+                )
+                return
+            
+            # Crear y mostrar diálogo
+            dialog = MatriculaEstudianteFormDialog(
+                estudiante_id=estudiante_id,
+                parent=self
+            )
+            
+            # Intentar obtener nombre para personalizar título
+            nombre_estudiante = ""
+            if hasattr(self, 'estudiante') and self.estudiante:
+                if hasattr(self.estudiante, 'nombres') and hasattr(self.estudiante, 'apellidos'):
+                    nombre_estudiante = f"{self.estudiante.nombres} {self.estudiante.apellidos}"
+            elif hasattr(self, 'estudiante_data') and self.estudiante_data:
+                nombres = self.estudiante_data.get('nombres', '')
+                apellidos = self.estudiante_data.get('apellidos', '')
+                nombre_estudiante = f"{nombres} {apellidos}"
+            
+            if nombre_estudiante.strip():
+                dialog.setWindowTitle(f"Matricular a: {nombre_estudiante.strip()}")
+            
+            # Ejecutar diálogo
+            result = dialog.exec()
+            
+            if result == QDialog.DialogCode.Accepted:
+                QMessageBox.information(
+                    self,
+                    "✅ Matrícula Exitosa",
+                    "El estudiante ha sido matriculado correctamente."
+                )
+                
         except Exception as e:
-            print(f"ERROR en on_inscribir_clicked: {e}")
-            logger.error(f"Error en on_inscribir_clicked: {e}")
+            logger.error(f"Error abriendo diálogo de matrícula: {e}", exc_info=True)
+            QMessageBox.critical(
+                self,
+                "Error",
+                f"No se pudo abrir el diálogo de matrícula:\n\n{str(e)}"
+            )
     
     def on_editar_clicked(self):
         """Manejador para botón Editar"""

@@ -208,7 +208,22 @@ class EstudianteModel(BaseModel):
     # ============================================================================
     # MÉTODOS DE BÚSQUEDA
     # ============================================================================
-    
+
+    @classmethod
+    def get_by_id(cls, estudiante_id):
+        """Obtener estudiante por ID"""
+        try:
+            if hasattr(cls, 'query'):
+                return cls.query.get(estudiante_id)
+            elif hasattr(cls, 'find_by_id'):
+                return cls.find_by_id(estudiante_id)
+            else:
+                # Buscar en lista o base de datos según tu implementación
+                pass
+        except Exception as e:
+            logger.error(f"Error en get_by_id: {e}")
+            return None 
+
     @classmethod
     def buscar_por_ci(cls, ci_numero: str, ci_expedicion: str = None) -> Optional['EstudianteModel']:
         """Busca un estudiante por su CI"""

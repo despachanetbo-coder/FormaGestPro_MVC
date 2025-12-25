@@ -32,7 +32,7 @@ class Ui_MatricularEstudianteDialog(object):
         self.lblEstudiante.setObjectName(u"lblEstudiante")
         self.lblEstudiante.setAlignment(Qt.AlignCenter)
         self.lblEstudiante.setWordWrap(True)
-        self.lblEstudiante.setStyleSheet(u"font-weight: bold; background-color: #e3f2fd; padding: 10px; border-radius: 5px;")
+        self.lblEstudiante.setStyleSheet(u"font-weight: bold; background-color: #e3f2fd; padding: 10px; border-radius: 5px; color: black;")
 
         self.verticalLayout.addWidget(self.lblEstudiante)
 
