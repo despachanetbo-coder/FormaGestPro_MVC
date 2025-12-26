@@ -9,20 +9,20 @@ from .estudiante_model import EstudianteModel
 from .docente_model import DocenteModel
 from .programa_academico_model import ProgramaAcademicoModel, EstadoPrograma
 from .matricula_model import MatriculaModel
-from .pago_model import PagoModel
+from .ingreso_model import IngresoModel
 from .cuota_model import CuotaModel
 from .plan_pago_model import PlanPagoModel
 from .configuracion_model import ConfiguracionModel
 
 __all__ = [
-    'BaseModel',
-    'EstudianteModel',
-    'DocenteModel',
-    'ProgramaAcademicoModel',
-    'EstadoPrograma',
-    'MatriculaModel',
-    'PagoModel',
-    'CuotaModel',
-    'PlanPagoModel',
-    'ConfiguracionModel'
+    "BaseModel",
+    "EstudianteModel",
+    "DocenteModel",
+    "ProgramaAcademicoModel",
+    "EstadoPrograma",
+    "MatriculaModel",
+    "IngresoModel",
+    "CuotaModel",
+    "PlanPagoModel",
+    "ConfiguracionModel",
 ]
