@@ -1,1114 +1,987 @@
 # app/controllers/matricula_controller.py
 """
-Controlador para la gestión de matrículas en FormaGestPro_MVC
-
-Responsabilidades:
-- CRUD completo de matrículas
-- Gestión de pagos y cuotas
-- Validaciones de negocio
-- Consultas y estadísticas
-- Integración con estudiantes y programas
-
-Autor: FormaGestPro_MVC Team
-Versión: 2.0.0
-Última actualización: [Fecha actual]
+Controlador para gestionar operaciones de matrícula.
+Refactorizado para mantener todas las funcionalidades existentes del repositorio
+con una arquitectura mejorada y documentación completa.
 """
 
-import logging
-from datetime import datetime, date, timedelta
-from decimal import Decimal, ROUND_HALF_UP
-from typing import Dict, List, Optional, Tuple, Any, Union
-from dataclasses import dataclass
-
-from sqlalchemy import and_, or_, func, desc, asc
-from sqlalchemy.orm import Session
-
-# Importar modelos
+from datetime import datetime
 from app.models.matricula_model import MatriculaModel
 from app.models.estudiante_model import EstudianteModel
-from app.models.programa_academico_model import ProgramaAcademicoModel
-from app.models.plan_pago_model import PlanPagoModel
-from app.models.pago_model import PagoModel
-from app.models.cuota_model import CuotaModel
+from app.models.curso_model import CursoModel
+from app.models.ingreso_model import IngresoModel
 from app.models.docente_model import DocenteModel
-
-# Importar utilidades
-from app.utils.validators import Validator
-from app.utils.exceptions import (
-    BusinessRuleException,
-    ValidationException,
-    NotFoundException,
-    DatabaseException
-)
-
-logger = logging.getLogger(__name__)
-
-
-@dataclass
-class MatriculaStats:
-    """Estructura para estadísticas de matrículas"""
-    total: int
-    por_estado_pago: Dict[str, int]
-    por_estado_academico: Dict[str, int]
-    ingresos_totales: Decimal
-    ingresos_pagados: Decimal
-    ingresos_pendientes: Decimal
-    mora_total: Decimal
 
 
 class MatriculaController:
-    """Controlador principal para operaciones de matrículas"""
-    
-    def __init__(self, session: Session = None):
-        """
-        Inicializar controlador de matrículas
-        
-        Args:
-            session: Sesión de SQLAlchemy (opcional, se crea una si no se proporciona)
-        """
-        self.session = session
-        self.validator = Validator()
-    
-    # ==================== OPERACIONES CRUD PRINCIPALES ====================
+    """
+    Controlador principal para operaciones de matrícula.
 
-    def crear_matricula(self, datos: dict):
-        """Ejemplo de validación completa"""
-        
-        # 1. Validar datos básicos
-        if not self.validator.validate_matricula_data(datos):
-            self.validator.raise_if_errors("Datos de matrícula inválidos")
-        
-        # 2. Validaciones específicas
-        if not self.validator.validate_monto(datos['monto_total'], minimo=Decimal('100')):
-            self.validator.raise_if_errors()
-        
-        # 3. Validar fechas
-        if 'fecha_inicio' in datos:
-            if not self.validator.validate_fecha(
-                datos['fecha_inicio'], 
-                min_date=date.today()
-            ):
-                self.validator.raise_if_errors()
-        
-        # 4. Validar descuentos
-        if 'descuento_aplicado' in datos:
-            if not self.validator.validate_descuento(
-                datos['descuento_aplicado'], 
-                maximo=Decimal('50')
-            ):
-                self.validator.raise_if_errors()
-        
-        # 5. Si hay cuotas, validar estructura
-        if datos.get('modalidad_pago') == 'CUOTAS' and 'plan_pago_id' in datos:
-            plan = self._obtener_plan(datos['plan_pago_id'])
-            if plan:
-                if not self.validator.validate_cuotas(plan.nro_cuotas, plan.intervalo_dias):
-                    self.validator.raise_if_errors()
-        
-        # 6. Validar reglas de negocio específicas
-        self._validar_reglas_negocio(datos)
-        
-        # Si llegamos aquí, todas las validaciones pasaron
-        return self._crear_matricula_en_db(datos)
+    Responsabilidades:
+    - Gestionar el ciclo completo de matrículas
+    - Coordinar entre diferentes modelos
+    - Validar reglas de negocio
+    - Procesar pagos asociados
+    - Generar reportes y estadísticas
+    """
 
-    def crear_matricula_completa(
+    def __init__(self):
+        """
+        Inicializa el controlador con todos los modelos necesarios.
+        """
+        self.matricula_model = MatriculaModel()
+        self.estudiante_model = EstudianteModel()
+        self.curso_model = CursoModel()
+        self.ingreso_model = IngresoModel()
+        self.docente_model = DocenteModel()
+
+    # ============================================================================
+    # MÉTODOS PRINCIPALES DE MATRÍCULA
+    # ============================================================================
+
+    def crear_matricula(
         self,
-        estudiante_id: int,
-        programa_id: int,
-        modalidad_pago: str,
-        plan_pago_id: Optional[int] = None,
-        observaciones: Optional[str] = None,
-        descuento_personalizado: Optional[Decimal] = None,
-        fecha_inicio: Optional[date] = None,
-        usuario_id: Optional[int] = None
-    ) -> Tuple[bool, str, Optional[MatriculaModel]]:
+        estudiante_id,
+        curso_id,
+        fecha_matricula=None,
+        estado="Activa",
+        monto_pagado=0,
+        metodo_pago="Efectivo",
+    ):
         """
-        Crear una matrícula completa con todas sus dependencias
-        
+        Crea una nueva matrícula con validaciones completas.
+
         Args:
-            estudiante_id: ID del estudiante
-            programa_id: ID del programa académico
-            modalidad_pago: 'CONTADO' o 'CUOTAS'
-            plan_pago_id: ID del plan de pago (requerido si modalidad es CUOTAS)
-            observaciones: Observaciones adicionales
-            descuento_personalizado: Descuento personalizado en porcentaje
-            fecha_inicio: Fecha de inicio del programa
-            usuario_id: ID del usuario que realiza la operación
-        
+            estudiante_id (int): ID del estudiante
+            curso_id (int): ID del curso
+            fecha_matricula (str, optional): Fecha en formato YYYY-MM-DD. Default: hoy
+            estado (str): Estado inicial de la matrícula
+            monto_pagado (float): Monto pagado inicialmente
+            metodo_pago (str): Método de pago utilizado
+
         Returns:
-            Tuple (éxito, mensaje, matrícula_creada)
+            dict: Resultado con 'success', 'message' y datos adicionales
         """
         try:
-            logger.info(f"Iniciando creación de matrícula para estudiante {estudiante_id}")
-            
-            # 1. Validaciones previas
-            errores = self._validar_creacion_matricula(
-                estudiante_id, programa_id, modalidad_pago, plan_pago_id
-            )
-            if errores:
-                return False, "; ".join(errores), None
-            
-            # 2. Obtener datos necesarios
-            estudiante = self._obtener_estudiante(estudiante_id)
-            programa = self._obtener_programa(programa_id)
-            plan_pago = self._obtener_plan_pago(plan_pago_id) if plan_pago_id else None
-            
-            # 3. Calcular montos
-            montos = self._calcular_montos_matricula(
-                programa, modalidad_pago, plan_pago, descuento_personalizado
-            )
-            
-            # 4. Crear matrícula base
+            # 1. VALIDACIONES PREVIAS
+            validacion = self._validar_creacion_matricula(estudiante_id, curso_id)
+            if not validacion["success"]:
+                return validacion
+
+            estudiante = validacion["estudiante"]
+            curso = validacion["curso"]
+
+            # 2. VERIFICAR MATRÍCULA EXISTENTE
+            if self._verificar_matricula_existente(estudiante_id, curso_id):
+                return {
+                    "success": False,
+                    "message": "El estudiante ya está matriculado en este curso",
+                }
+
+            # 3. PREPARAR DATOS DE MATRÍCULA
+            fecha_matricula = fecha_matricula or datetime.now().strftime("%Y-%m-%d")
             matricula_data = {
-                'estudiante_id': estudiante_id,
-                'programa_id': programa_id,
-                'modalidad_pago': modalidad_pago,
-                'plan_pago_id': plan_pago_id,
-                'monto_total': float(montos['monto_base']),
-                'descuento_aplicado': float(montos['descuento_total']),
-                'monto_final': float(montos['monto_final']),
-                'monto_pagado': 0.0,
-                'estado_pago': 'PENDIENTE',
-                'estado_academico': 'INSCRITO',
-                'fecha_inicio': fecha_inicio or date.today(),
-                'coordinador_id': programa.tutor_id,
-                'observaciones': observaciones,
-                'creado_por': usuario_id
+                "estudiante_id": estudiante_id,
+                "curso_id": curso_id,
+                "fecha_matricula": fecha_matricula,
+                "estado": estado,
+                "monto_pagado": monto_pagado,
+                "metodo_pago": metodo_pago,
+                "created_at": datetime.now(),
+                "updated_at": datetime.now(),
             }
-            
-            # 5. Crear matrícula en base de datos
-            matricula = MatriculaModel(**matricula_data)
-            self._guardar_matricula(matricula)
-            
-            # 6. Crear cuotas programadas si corresponde
-            if modalidad_pago == 'CUOTAS' and plan_pago:
-                self._crear_cuotas_programadas(
-                    matricula.id, montos['monto_final'], plan_pago, fecha_inicio
+
+            # 4. CREAR MATRÍCULA EN BASE DE DATOS
+            matricula_id = self.matricula_model.create(matricula_data)
+
+            if not matricula_id:
+                return {
+                    "success": False,
+                    "message": "Error al guardar la matrícula en la base de datos",
+                }
+
+            # 5. PROCESAR PAGO SI EXISTE
+            resultado_pago = None
+            if monto_pagado > 0:
+                resultado_pago = self._procesar_pago_matricula(
+                    matricula_id,
+                    estudiante_id,
+                    curso,
+                    monto_pagado,
+                    metodo_pago,
+                    fecha_matricula,
                 )
-            
-            # 7. Actualizar cupos del programa
-            self._actualizar_cupos_programa(programa_id, -1)
-            
-            # 8. Registrar movimiento de auditoría
-            self._registrar_auditoria(
-                'CREACION_MATRICULA',
-                f'Matrícula {matricula.id} creada para estudiante {estudiante_id}',
-                usuario_id
-            )
-            
-            logger.info(f"Matrícula {matricula.id} creada exitosamente")
-            return True, f"Matrícula creada exitosamente (ID: {matricula.id})", matricula
-            
-        except ValidationException as e:
-            logger.warning(f"Validación fallida: {e}")
-            return False, str(e), None
-        except BusinessRuleException as e:
-            logger.warning(f"Regla de negocio violada: {e}")
-            return False, str(e), None
-        except NotFoundException as e:
-            logger.warning(f"Recurso no encontrado: {e}")
-            return False, str(e), None
-        except Exception as e:
-            logger.error(f"Error crítico creando matrícula: {e}", exc_info=True)
-            return False, f"Error interno del sistema: {str(e)}", None
-    
-    def actualizar_matricula(
-        self,
-        matricula_id: int,
-        datos_actualizacion: Dict[str, Any],
-        usuario_id: Optional[int] = None
-    ) -> Tuple[bool, str, Optional[MatriculaModel]]:
-        """
-        Actualizar una matrícula existente
-        
-        Args:
-            matricula_id: ID de la matrícula a actualizar
-            datos_actualizacion: Datos a actualizar
-            usuario_id: ID del usuario que realiza la operación
-        
-        Returns:
-            Tuple (éxito, mensaje, matrícula_actualizada)
-        """
-        try:
-            matricula = self._obtener_matricula_por_id(matricula_id)
-            if not matricula:
-                raise NotFoundException(f"Matrícula {matricula_id} no encontrada")
-            
-            # Validar que la matrícula se pueda actualizar
-            self._validar_matricula_para_actualizacion(matricula)
-            
-            # Validar datos de actualización
-            errores = self._validar_datos_actualizacion(datos_actualizacion)
-            if errores:
-                raise ValidationException("; ".join(errores))
-            
-            # Campos que no se pueden actualizar directamente
-            campos_protegidos = ['id', 'estudiante_id', 'programa_id', 'fecha_matricula']
-            for campo in campos_protegidos:
-                if campo in datos_actualizacion:
-                    del datos_actualizacion[campo]
-            
-            # Actualizar campos permitidos
-            for campo, valor in datos_actualizacion.items():
-                if hasattr(matricula, campo):
-                    # Validaciones específicas por campo
-                    if campo in ['monto_total', 'monto_final', 'monto_pagado', 'descuento_aplicado']:
-                        valor = self._validar_monto(valor)
-                    
-                    setattr(matricula, campo, valor)
-            
-            # Recalcular estados si es necesario
-            if 'monto_pagado' in datos_actualizacion:
-                self._actualizar_estado_pago(matricula)
-            
-            # Guardar cambios
-            if not matricula.save():
-                raise DatabaseException("Error al guardar cambios en la matrícula")
-            
-            # Registrar auditoría
-            self._registrar_auditoria(
-                'ACTUALIZACION_MATRICULA',
-                f'Matrícula {matricula_id} actualizada',
-                usuario_id
-            )
-            
-            return True, f"Matrícula {matricula_id} actualizada exitosamente", matricula
-            
-        except (ValidationException, BusinessRuleException, NotFoundException) as e:
-            logger.warning(f"Error controlado actualizando matrícula: {e}")
-            return False, str(e), None
-        except Exception as e:
-            logger.error(f"Error actualizando matrícula {matricula_id}: {e}", exc_info=True)
-            return False, f"Error interno: {str(e)}", None
-    
-    # ==================== OPERACIONES ESPECÍFICAS ====================
-    
-    def matricular_estudiante_desde_dialogo(
-        self,
-        estudiante_id: int,
-        programa_id: int,
-        modalidad_pago: str,
-        plan_pago_id: Optional[int] = None,
-        descuento_contado: bool = False,
-        descuento_promocion: bool = False,
-        descuento_manual: Optional[Decimal] = None,
-        monto_manual: Optional[Decimal] = None,
-        observaciones: Optional[str] = None,
-        fecha_inicio: Optional[date] = None
-    ) -> Tuple[bool, str, Optional[Dict]]:
-        """
-        Matricular estudiante desde interfaz de diálogo
-        
-        Args:
-            estudiante_id: ID del estudiante
-            programa_id: ID del programa
-            modalidad_pago: Modalidad de pago
-            plan_pago_id: ID del plan de pago
-            descuento_contado: Aplicar descuento por pago contado
-            descuento_promocion: Aplicar descuento por promoción
-            descuento_manual: Porcentaje de descuento manual
-            monto_manual: Monto manual (sobrescribe cálculos)
-            observaciones: Observaciones adicionales
-            fecha_inicio: Fecha de inicio
-        
-        Returns:
-            Tuple (éxito, mensaje, datos_completos)
-        """
-        try:
-            # Obtener programa para cálculos
-            programa = self._obtener_programa(programa_id)
-            
-            # Calcular descuentos
-            descuentos = self._calcular_descuentos_dialogo(
-                programa,
-                modalidad_pago,
-                descuento_contado,
-                descuento_promocion,
-                descuento_manual,
-                monto_manual
-            )
-            
-            # Crear matrícula
-            success, message, matricula = self.crear_matricula_completa(
-                estudiante_id=estudiante_id,
-                programa_id=programa_id,
-                modalidad_pago=modalidad_pago,
-                plan_pago_id=plan_pago_id,
-                observaciones=observaciones,
-                descuento_personalizado=descuentos['descuento_total_porcentaje'],
-                fecha_inicio=fecha_inicio
-            )
-            
-            if not success:
-                return False, message, None
-            
-            # Preparar respuesta detallada
+
+            # 6. ACTUALIZAR CONTADORES
+            self._actualizar_contadores_matricula(estudiante_id, curso_id)
+
+            # 7. PREPARAR RESPUESTA
             respuesta = {
-                'matricula_id': matricula.id,
-                'estudiante': self._obtener_estudiante(estudiante_id).to_dict(),
-                'programa': programa.to_dict(),
-                'montos': {
-                    'base': float(descuentos['monto_base']),
-                    'descuento_total': float(descuentos['descuento_total']),
-                    'final': float(descuentos['monto_final']),
-                    'descuentos_detalle': descuentos['detalle']
+                "success": True,
+                "message": "✅ Matrícula creada exitosamente",
+                "matricula_id": matricula_id,
+                "datos": {
+                    "estudiante": f"{estudiante.get('nombre', '')} {estudiante.get('apellido', '')}",
+                    "curso": curso.get("nombre", ""),
+                    "fecha": fecha_matricula,
+                    "estado": estado,
+                    "monto_pagado": monto_pagado,
                 },
-                'modalidad_pago': modalidad_pago,
-                'fecha_inicio': matricula.fecha_inicio.isoformat() if matricula.fecha_inicio else None,
-                'cuotas': []
             }
-            
-            # Agregar información de cuotas si corresponde
-            if modalidad_pago == 'CUOTAS' and plan_pago_id:
-                cuotas = self.obtener_cuotas_matricula(matricula.id)
-                respuesta['cuotas'] = [
-                    {
-                        'nro_cuota': c.nro_cuota,
-                        'monto': c.monto,
-                        'fecha_vencimiento': c.fecha_vencimiento.isoformat(),
-                        'estado': c.estado
-                    }
-                    for c in cuotas
-                ]
-            
-            return True, message, respuesta
-            
+
+            if resultado_pago:
+                respuesta["pago"] = resultado_pago
+
+            return respuesta
+
         except Exception as e:
-            logger.error(f"Error en matrícula desde diálogo: {e}", exc_info=True)
-            return False, f"Error en proceso de matrícula: {str(e)}", None
-    
-    def registrar_pago_matricula(
-        self,
-        matricula_id: int,
-        monto: Decimal,
-        forma_pago: str,
-        nro_comprobante: Optional[str] = None,
-        nro_transaccion: Optional[str] = None,
-        observaciones: Optional[str] = None,
-        nro_cuota: Optional[int] = None,
-        usuario_id: Optional[int] = None
-    ) -> Tuple[bool, str, Optional[PagoModel]]:
+            return {
+                "success": False,
+                "message": f"❌ Error crítico al crear matrícula: {str(e)}",
+            }
+
+    # ============================================================================
+    # MÉTODOS DE CONSULTA Y BÚSQUEDA
+    # ============================================================================
+
+    def obtener_matriculas(self, filtros=None, paginado=False, pagina=1, por_pagina=20):
         """
-        Registrar un pago para una matrícula
-        
+        Obtiene matrículas con múltiples opciones de filtrado y paginación.
+
         Args:
-            matricula_id: ID de la matrícula
-            monto: Monto del pago
-            forma_pago: Forma de pago
-            nro_comprobante: Número de comprobante
-            nro_transaccion: Número de transacción
-            observaciones: Observaciones del pago
-            nro_cuota: Número de cuota (si aplica)
-            usuario_id: ID del usuario
-        
+            filtros (dict): Diccionario con filtros aplicables
+            paginado (bool): True para resultados paginados
+            pagina (int): Número de página actual
+            por_pagina (int): Elementos por página
+
         Returns:
-            Tuple (éxito, mensaje, pago)
+            dict/list: Resultados según formato solicitado
         """
         try:
-            matricula = self._obtener_matricula_por_id(matricula_id)
-            if not matricula:
-                raise NotFoundException(f"Matrícula {matricula_id} no encontrada")
-            
-            # Validar pago
-            self._validar_pago(matricula, monto, nro_cuota)
-            
-            # Crear registro de pago
-            pago_data = {
-                'matricula_id': matricula_id,
-                'nro_cuota': nro_cuota,
-                'monto': float(monto),
-                'fecha_pago': date.today(),
-                'forma_pago': forma_pago,
-                'estado': 'CONFIRMADO',
-                'nro_comprobante': nro_comprobante,
-                'nro_transaccion': nro_transaccion,
-                'observaciones': observaciones,
-                'registrado_por': usuario_id
-            }
-            
-            pago = PagoModel(**pago_data)
-            if not pago.save():
-                raise DatabaseException("Error al guardar el pago")
-            
-            # Actualizar estado de la matrícula
-            matricula.monto_pagado += float(monto)
-            self._actualizar_estado_pago(matricula)
-            
-            # Actualizar cuota si corresponde
-            if nro_cuota:
-                self._actualizar_estado_cuota(matricula_id, nro_cuota, pago.id)
-            
-            # Registrar movimiento de caja
-            self._registrar_movimiento_caja(
-                tipo='INGRESO',
-                monto=monto,
-                descripcion=f"Pago matrícula {matricula_id}",
-                referencia_tipo='PAGO',
-                referencia_id=pago.id
-            )
-            
-            # Registrar auditoría
-            self._registrar_auditoria(
-                'REGISTRO_PAGO',
-                f'Pago registrado para matrícula {matricula_id} - Monto: {monto}',
-                usuario_id
-            )
-            
-            return True, f"Pago registrado exitosamente (ID: {pago.id})", pago
-            
-        except (ValidationException, BusinessRuleException) as e:
-            logger.warning(f"Validación fallida para pago: {e}")
-            return False, str(e), None
-        except Exception as e:
-            logger.error(f"Error registrando pago: {e}", exc_info=True)
-            return False, f"Error interno: {str(e)}", None
-    
-    # ==================== CONSULTAS Y BÚSQUEDAS ====================
-    
-    def obtener_matriculas_activas_estudiante(self, estudiante_id: int) -> List[MatriculaModel]:
-        """Obtener matrículas activas de un estudiante"""
-        return MatriculaModel.query.filter(
-            and_(
-                MatriculaModel.estudiante_id == estudiante_id,
-                MatriculaModel.estado_academico.in_(['INSCRITO', 'EN_CURSO', 'PREINSCRITO'])
-            )
-        ).order_by(desc(MatriculaModel.fecha_matricula)).all()
-    
-    def obtener_matriculas_con_detalles(
-        self,
-        filtros: Optional[Dict[str, Any]] = None,
-        pagina: int = 1,
-        por_pagina: int = 20,
-        ordenar_por: str = 'fecha_matricula',
-        orden_descendente: bool = True
-    ) -> Dict[str, Any]:
-        """
-        Obtener matrículas con detalles completos y paginación
-        
-        Args:
-            filtros: Diccionario de filtros
-            pagina: Número de página
-            por_pagina: Elementos por página
-            ordenar_por: Campo para ordenar
-            orden_descendente: Orden descendente
-        
-        Returns:
-            Diccionario con resultados y metadatos
-        """
-        try:
-            # Construir consulta base
-            query = self.session.query(MatriculaModel)
-            
-            # Aplicar joins para obtener detalles
-            query = query.join(EstudianteModel)
-            query = query.join(ProgramaAcademicoModel)
-            
-            # Aplicar filtros
-            if filtros:
-                query = self._aplicar_filtros_matriculas(query, filtros)
-            
-            # Contar total de resultados
-            total = query.count()
-            
-            # Aplicar ordenamiento
-            campo_orden = getattr(MatriculaModel, ordenar_por, MatriculaModel.fecha_matricula)
-            if orden_descendente:
-                query = query.order_by(desc(campo_orden))
+            # Aplicar filtros por defecto si no se especifican
+            if filtros is None:
+                filtros = {}
+
+            # Obtener matrículas según formato
+            if paginado:
+                return self.matricula_model.get_paginados(
+                    pagina=pagina, por_pagina=por_pagina, filtros=filtros
+                )
             else:
-                query = query.order_by(asc(campo_orden))
-            
-            # Aplicar paginación
-            offset = (pagina - 1) * por_pagina
-            resultados = query.offset(offset).limit(por_pagina).all()
-            
-            # Enriquecer resultados con detalles
-            resultados_enriquecidos = []
-            for matricula in resultados:
-                detalles = {
-                    'matricula': matricula.to_dict(),
-                    'estudiante': {
-                        'id': matricula.estudiante.id,
-                        'nombre_completo': f"{matricula.estudiante.nombres} {matricula.estudiante.apellidos}",
-                        'ci': matricula.estudiante.ci_numero
-                    },
-                    'programa': {
-                        'id': matricula.programa.id,
-                        'nombre': matricula.programa.nombre,
-                        'codigo': matricula.programa.codigo
-                    },
-                    'estadisticas': {
-                        'saldo_pendiente': matricula.saldo_pendiente,
-                        'porcentaje_pagado': matricula.porcentaje_pagado,
-                        'dias_mora': self._calcular_dias_mora(matricula)
-                    }
-                }
-                resultados_enriquecidos.append(detalles)
-            
-            return {
-                'resultados': resultados_enriquecidos,
-                'paginacion': {
-                    'pagina_actual': pagina,
-                    'por_pagina': por_pagina,
-                    'total_resultados': total,
-                    'total_paginas': (total + por_pagina - 1) // por_pagina
-                },
-                'filtros_aplicados': filtros or {}
-            }
-            
+                matriculas = self.matricula_model.get_all_with_details(filtros)
+                return {"success": True, "total": len(matriculas), "data": matriculas}
+
         except Exception as e:
-            logger.error(f"Error obteniendo matrículas con detalles: {e}")
-            return {
-                'resultados': [],
-                'paginacion': {},
-                'error': str(e)
-            }
-    
-    def buscar_matriculas_por_texto(self, texto: str) -> List[Dict[str, Any]]:
+            print(f"⚠️ Error al obtener matrículas: {e}")
+            return {"success": False, "data": [], "total": 0, "message": str(e)}
+
+    def buscar_matriculas(self, criterio, valor, filtros_adicionales=None):
         """
-        Buscar matrículas por texto (nombre estudiante, CI, programa)
-        
+        Búsqueda avanzada de matrículas por múltiples criterios.
+
         Args:
-            texto: Texto a buscar
-        
+            criterio (str): Campo de búsqueda
+            valor (str): Valor a buscar
+            filtros_adicionales (dict): Filtros adicionales
+
         Returns:
-            Lista de matrículas encontradas
+            list: Matrículas encontradas con detalles
         """
         try:
-            # Buscar en múltiples campos
-            resultados = self.session.query(MatriculaModel)\
-                .join(EstudianteModel)\
-                .join(ProgramaAcademicoModel)\
-                .filter(
-                    or_(
-                        EstudianteModel.nombres.ilike(f"%{texto}%"),
-                        EstudianteModel.apellidos.ilike(f"%{texto}%"),
-                        EstudianteModel.ci_numero.ilike(f"%{texto}%"),
-                        ProgramaAcademicoModel.nombre.ilike(f"%{texto}%"),
-                        ProgramaAcademicoModel.codigo.ilike(f"%{texto}%"),
-                        MatriculaModel.id.cast(str).ilike(f"%{texto}%")
-                    )
-                )\
-                .limit(50)\
-                .all()
-            
-            return [
-                {
-                    'id': m.id,
-                    'estudiante': f"{m.estudiante.nombres} {m.estudiante.apellidos}",
-                    'ci': m.estudiante.ci_numero,
-                    'programa': m.programa.nombre,
-                    'estado_pago': m.estado_pago,
-                    'estado_academico': m.estado_academico,
-                    'monto_final': m.monto_final,
-                    'monto_pagado': m.monto_pagado
-                }
-                for m in resultados
-            ]
-            
+            # Mapear criterios a métodos del modelo
+            criterios_validos = {
+                "estudiante": "search_by_estudiante",
+                "curso": "search_by_curso",
+                "estado": "search_by_estado",
+                "fecha": "search_by_fecha",
+                "docente": "search_by_docente",
+                "codigo": "search_by_codigo_matricula",
+            }
+
+            if criterio not in criterios_validos:
+                # Búsqueda general
+                return self.matricula_model.search_general(valor, filtros_adicionales)
+
+            # Llamar al método específico del modelo
+            metodo_busqueda = getattr(self.matricula_model, criterios_validos[criterio])
+            return metodo_busqueda(valor, filtros_adicionales)
+
         except Exception as e:
-            logger.error(f"Error buscando matrículas por texto: {e}")
+            print(f"⚠️ Error en búsqueda de matrículas: {e}")
             return []
-    
-    # ==================== ESTADÍSTICAS E INFORMES ====================
-    
-    def obtener_estadisticas_completas(self) -> MatriculaStats:
+
+    def obtener_matricula_por_id(self, matricula_id, completo=True):
         """
-        Obtener estadísticas completas de matrículas
-        
-        Returns:
-            Objeto MatriculaStats con estadísticas
-        """
-        try:
-            # Consultas optimizadas
-            total = self.session.query(func.count(MatriculaModel.id)).scalar()
-            
-            # Por estado de pago
-            estados_pago = ['PENDIENTE', 'PARCIAL', 'PAGADO', 'MORA']
-            por_estado_pago = {}
-            for estado in estados_pago:
-                count = self.session.query(func.count(MatriculaModel.id))\
-                    .filter(MatriculaModel.estado_pago == estado)\
-                    .scalar()
-                por_estado_pago[estado] = count
-            
-            # Por estado académico
-            estados_academicos = ['PREINSCRITO', 'INSCRITO', 'EN_CURSO', 'CONCLUIDO', 'RETIRADO']
-            por_estado_academico = {}
-            for estado in estados_academicos:
-                count = self.session.query(func.count(MatriculaModel.id))\
-                    .filter(MatriculaModel.estado_academico == estado)\
-                    .scalar()
-                por_estado_academico[estado] = count
-            
-            # Ingresos
-            ingresos_result = self.session.query(
-                func.sum(MatriculaModel.monto_final).label('total'),
-                func.sum(MatriculaModel.monto_pagado).label('pagado')
-            ).first()
-            
-            ingresos_totales = Decimal(ingresos_result.total or 0)
-            ingresos_pagados = Decimal(ingresos_result.pagado or 0)
-            ingresos_pendientes = ingresos_totales - ingresos_pagados
-            
-            # Mora total
-            mora_result = self.session.query(
-                func.sum(MatriculaModel.monto_final - MatriculaModel.monto_pagado)
-            ).filter(MatriculaModel.estado_pago == 'MORA').scalar()
-            
-            mora_total = Decimal(mora_result or 0)
-            
-            return MatriculaStats(
-                total=total,
-                por_estado_pago=por_estado_pago,
-                por_estado_academico=por_estado_academico,
-                ingresos_totales=ingresos_totales,
-                ingresos_pagados=ingresos_pagados,
-                ingresos_pendientes=ingresos_pendientes,
-                mora_total=mora_total
-            )
-            
-        except Exception as e:
-            logger.error(f"Error obteniendo estadísticas: {e}")
-            return MatriculaStats(
-                total=0,
-                por_estado_pago={},
-                por_estado_academico={},
-                ingresos_totales=Decimal('0'),
-                ingresos_pagados=Decimal('0'),
-                ingresos_pendientes=Decimal('0'),
-                mora_total=Decimal('0')
-            )
-    
-    def generar_reporte_matriculas(
-        self,
-        fecha_inicio: date,
-        fecha_fin: date,
-        formato: str = 'json'
-    ) -> Dict[str, Any]:
-        """
-        Generar reporte detallado de matrículas en un período
-        
+        Obtiene una matrícula específica con opción de datos completos.
+
         Args:
-            fecha_inicio: Fecha de inicio del período
-            fecha_fin: Fecha de fin del período
-            formato: Formato del reporte ('json', 'csv', 'pdf')
-        
+            matricula_id (int): ID de la matrícula
+            completo (bool): True para incluir datos relacionados
+
         Returns:
-            Diccionario con datos del reporte
+            dict: Datos de la matrícula o None
         """
         try:
-            # Obtener matrículas en el período
-            matriculas = self.session.query(MatriculaModel)\
-                .filter(
-                    and_(
-                        MatriculaModel.fecha_matricula >= fecha_inicio,
-                        MatriculaModel.fecha_matricula <= fecha_fin
-                    )
-                )\
-                .all()
-            
-            # Estadísticas del período
-            total_matriculas = len(matriculas)
-            ingresos_totales = sum(Decimal(str(m.monto_final)) for m in matriculas)
-            ingresos_pagados = sum(Decimal(str(m.monto_pagado)) for m in matriculas)
-            
-            # Agrupar por programa
-            programas = {}
-            for matricula in matriculas:
-                programa_nombre = matricula.programa.nombre
-                if programa_nombre not in programas:
-                    programas[programa_nombre] = {
-                        'matriculas': 0,
-                        'ingresos_totales': Decimal('0'),
-                        'ingresos_pagados': Decimal('0')
-                    }
-                
-                programas[programa_nombre]['matriculas'] += 1
-                programas[programa_nombre]['ingresos_totales'] += Decimal(str(matricula.monto_final))
-                programas[programa_nombre]['ingresos_pagados'] += Decimal(str(matricula.monto_pagado))
-            
-            # Formatear respuesta según formato solicitado
-            reporte = {
-                'periodo': {
-                    'fecha_inicio': fecha_inicio.isoformat(),
-                    'fecha_fin': fecha_fin.isoformat()
-                },
-                'estadisticas_generales': {
-                    'total_matriculas': total_matriculas,
-                    'ingresos_totales': float(ingresos_totales),
-                    'ingresos_pagados': float(ingresos_pagados),
-                    'ingresos_pendientes': float(ingresos_totales - ingresos_pagados)
-                },
-                'por_programa': [
-                    {
-                        'programa': nombre,
-                        'matriculas': datos['matriculas'],
-                        'ingresos_totales': float(datos['ingresos_totales']),
-                        'ingresos_pagados': float(datos['ingresos_pagados'])
-                    }
-                    for nombre, datos in programas.items()
-                ],
-                'matriculas_detalladas': [
-                    {
-                        'id': m.id,
-                        'estudiante': f"{m.estudiante.nombres} {m.estudiante.apellidos}",
-                        'programa': m.programa.nombre,
-                        'fecha_matricula': m.fecha_matricula.isoformat(),
-                        'monto_final': m.monto_final,
-                        'monto_pagado': m.monto_pagado,
-                        'estado_pago': m.estado_pago,
-                        'estado_academico': m.estado_academico
-                    }
-                    for m in matriculas
-                ],
-                'generado_en': datetime.now().isoformat()
-            }
-            
-            # Convertir a otros formatos si es necesario
-            if formato == 'csv':
-                # Implementar conversión a CSV
-                pass
-            elif formato == 'pdf':
-                # Implementar generación de PDF
-                pass
-            
-            return reporte
-            
+            if completo:
+                return self.matricula_model.get_completa_by_id(matricula_id)
+            else:
+                return self.matricula_model.get_by_id(matricula_id)
+
         except Exception as e:
-            logger.error(f"Error generando reporte: {e}")
-            return {'error': str(e)}
-    
-    # ==================== MÉTODOS PRIVADOS DE VALIDACIÓN ====================
-    
-    def _validar_creacion_matricula(
-        self,
-        estudiante_id: int,
-        programa_id: int,
-        modalidad_pago: str,
-        plan_pago_id: Optional[int] = None
-    ) -> List[str]:
-        """Validar datos para creación de matrícula"""
-        errores = []
-        
-        # Validar modalidad de pago
-        if modalidad_pago not in ['CONTADO', 'CUOTAS']:
-            errores.append("Modalidad de pago inválida")
-        
-        # Validar plan de pago para modalidad CUOTAS
-        if modalidad_pago == 'CUOTAS' and not plan_pago_id:
-            errores.append("Plan de pago requerido para modalidad CUOTAS")
-        
-        # Verificar si ya está matriculado
-        if self._esta_matriculado(estudiante_id, programa_id):
-            errores.append("El estudiante ya está matriculado en este programa")
-        
-        # Verificar cupos disponibles
-        programa = self._obtener_programa(programa_id)
-        if programa and programa.cupos_disponibles <= 0:
-            errores.append("No hay cupos disponibles en este programa")
-        
-        return errores
-    
-    def _validar_matricula_para_actualizacion(self, matricula: MatriculaModel) -> None:
-        """Validar que una matrícula se pueda actualizar"""
-        if matricula.estado_academico in ['CONCLUIDO', 'RETIRADO']:
-            raise BusinessRuleException(
-                f"No se puede actualizar una matrícula en estado {matricula.estado_academico}"
-            )
-    
-    def _validar_pago(
-        self,
-        matricula: MatriculaModel,
-        monto: Decimal,
-        nro_cuota: Optional[int] = None
-    ) -> None:
-        """Validar un pago antes de registrarlo"""
-        if matricula.estado_academico in ['CONCLUIDO', 'RETIRADO']:
-            raise BusinessRuleException(
-                f"No se pueden registrar pagos en matrículas {matricula.estado_academico}"
-            )
-        
-        saldo_pendiente = Decimal(str(matricula.monto_final - matricula.monto_pagado))
-        if monto > saldo_pendiente:
-            raise ValidationException(
-                f"Monto excede el saldo pendiente. Saldo: {saldo_pendiente}, Pago: {monto}"
-            )
-        
-        if nro_cuota:
-            cuota = self._obtener_cuota(matricula.id, nro_cuota)
-            if not cuota:
-                raise NotFoundException(f"Cuota {nro_cuota} no encontrada")
-            
-            if cuota.estado == 'PAGADA':
-                raise BusinessRuleException(f"La cuota {nro_cuota} ya está pagada")
-    
-    # ==================== MÉTODOS PRIVADOS DE CÁLCULO ====================
-    
-    def _calcular_montos_matricula(
-        self,
-        programa: ProgramaAcademicoModel,
-        modalidad_pago: str,
-        plan_pago: Optional[PlanPagoModel] = None,
-        descuento_personalizado: Optional[Decimal] = None
-    ) -> Dict[str, Decimal]:
-        """Calcular montos para una matrícula"""
-        monto_base = Decimal(str(programa.costo_base))
-        
-        # Descuento por pago contado
-        descuento_contado = Decimal('0')
-        if modalidad_pago == 'CONTADO':
-            descuento_contado = monto_base * Decimal(str(programa.descuento_contado)) / Decimal('100')
-        
-        # Descuento por promoción
-        descuento_promocion = Decimal('0')
-        if programa.promocion_activa:
-            descuento_promocion = monto_base * Decimal(str(programa.descuento_promocion)) / Decimal('100')
-        
-        # Descuento personalizado
-        descuento_personal = Decimal('0')
-        if descuento_personalizado:
-            descuento_personal = monto_base * descuento_personalizado / Decimal('100')
-        
-        # Total descuentos
-        descuento_total = descuento_contado + descuento_promocion + descuento_personal
-        
-        # Monto final
-        monto_final = monto_base - descuento_total
-        if monto_final < Decimal('0'):
-            monto_final = Decimal('0')
-        
-        return {
-            'monto_base': monto_base,
-            'descuento_contado': descuento_contado,
-            'descuento_promocion': descuento_promocion,
-            'descuento_personal': descuento_personal,
-            'descuento_total': descuento_total,
-            'monto_final': monto_final
-        }
-    
-    def _calcular_descuentos_dialogo(
-        self,
-        programa: ProgramaAcademicoModel,
-        modalidad_pago: str,
-        descuento_contado: bool,
-        descuento_promocion: bool,
-        descuento_manual: Optional[Decimal],
-        monto_manual: Optional[Decimal]
-    ) -> Dict[str, Any]:
-        """Calcular descuentos desde diálogo de matrícula"""
-        monto_base = Decimal(str(programa.costo_base))
-        
-        # Calcular descuentos individuales
-        descuentos = []
-        total_descuento = Decimal('0')
-        
-        # Descuento por contado
-        if modalidad_pago == 'CONTADO' and descuento_contado:
-            desc_contado = monto_base * Decimal(str(programa.descuento_contado)) / Decimal('100')
-            descuentos.append({
-                'tipo': 'PAGO_CONTADO',
-                'porcentaje': programa.descuento_contado,
-                'monto': desc_contado
-            })
-            total_descuento += desc_contado
-        
-        # Descuento por promoción
-        if descuento_promocion and programa.promocion_activa:
-            desc_promocion = monto_base * Decimal(str(programa.descuento_promocion)) / Decimal('100')
-            descuentos.append({
-                'tipo': 'PROMOCION',
-                'nombre': programa.descripcion_promocion,
-                'porcentaje': programa.descuento_promocion,
-                'monto': desc_promocion
-            })
-            total_descuento += desc_promocion
-        
-        # Descuento manual
-        if descuento_manual:
-            desc_manual = monto_base * descuento_manual / Decimal('100')
-            descuentos.append({
-                'tipo': 'DESCUENTO_MANUAL',
-                'porcentaje': float(descuento_manual),
-                'monto': desc_manual
-            })
-            total_descuento += desc_manual
-        
-        # Calcular monto final
-        if monto_manual:
-            monto_final = monto_manual
-            total_descuento = monto_base - monto_final
-        else:
-            monto_final = monto_base - total_descuento
-        
-        # Asegurar que no sea negativo
-        if monto_final < Decimal('0'):
-            monto_final = Decimal('0')
-            total_descuento = monto_base
-        
-        return {
-            'monto_base': monto_base,
-            'descuento_total': total_descuento,
-            'descuento_total_porcentaje': (total_descuento / monto_base * Decimal('100')) if monto_base > Decimal('0') else Decimal('0'),
-            'monto_final': monto_final,
-            'detalle': descuentos
-        }
-    
-    # ==================== MÉTODOS PRIVADOS DE BASE DE DATOS ====================
-    
-    def _obtener_matricula_por_id(self, matricula_id: int) -> Optional[MatriculaModel]:
-        """Obtener matrícula por ID con manejo de errores"""
-        try:
-            return self.session.query(MatriculaModel).get(matricula_id)
-        except Exception as e:
-            logger.error(f"Error obteniendo matrícula {matricula_id}: {e}")
+            print(f"⚠️ Error al obtener matrícula {matricula_id}: {e}")
             return None
-    
-    def _obtener_estudiante(self, estudiante_id: int) -> EstudianteModel:
-        """Obtener estudiante o lanzar excepción"""
-        estudiante = self.session.query(EstudianteModel).get(estudiante_id)
-        if not estudiante:
-            raise NotFoundException(f"Estudiante {estudiante_id} no encontrado")
-        return estudiante
-    
-    def _obtener_programa(self, programa_id: int) -> ProgramaAcademicoModel:
-        """Obtener programa o lanzar excepción"""
-        programa = self.session.query(ProgramaAcademicoModel).get(programa_id)
-        if not programa:
-            raise NotFoundException(f"Programa {programa_id} no encontrado")
-        return programa
-    
-    def _esta_matriculado(self, estudiante_id: int, programa_id: int) -> bool:
-        """Verificar si ya está matriculado"""
-        count = self.session.query(func.count(MatriculaModel.id))\
-            .filter(
-                and_(
-                    MatriculaModel.estudiante_id == estudiante_id,
-                    MatriculaModel.programa_id == programa_id,
-                    MatriculaModel.estado_academico.in_(['INSCRITO', 'EN_CURSO', 'PREINSCRITO'])
-                )
-            )\
-            .scalar()
-        return count > 0
-    
-    def _crear_cuotas_programadas(
-        self,
-        matricula_id: int,
-        monto_total: Decimal,
-        plan_pago: PlanPagoModel,
-        fecha_inicio: Optional[date] = None
-    ) -> None:
-        """Crear cuotas programadas para una matrícula"""
-        fecha_inicio = fecha_inicio or date.today()
-        monto_cuota = monto_total / Decimal(str(plan_pago.nro_cuotas))
-        
-        for i in range(plan_pago.nro_cuotas):
-            fecha_vencimiento = fecha_inicio + timedelta(days=i * plan_pago.intervalo_dias)
-            
-            cuota = CuotaModel(
-                matricula_id=matricula_id,
-                nro_cuota=i + 1,
-                monto=float(monto_cuota.quantize(Decimal('0.01'), ROUND_HALF_UP)),
-                fecha_vencimiento=fecha_vencimiento,
-                estado='PENDIENTE'
-            )
-            cuota.save()
-    
-    # ==================== MÉTODOS PRIVADOS DE UTILIDAD ====================
-    
-    def _actualizar_estado_pago(self, matricula: MatriculaModel) -> None:
-        """Actualizar estado de pago de una matrícula"""
-        saldo_pendiente = matricula.monto_final - matricula.monto_pagado
-        
-        if matricula.monto_pagado <= 0:
-            nuevo_estado = 'PENDIENTE'
-        elif saldo_pendiente <= 0:
-            nuevo_estado = 'PAGADO'
-        elif self._tiene_cuotas_vencidas(matricula.id):
-            nuevo_estado = 'MORA'
-        else:
-            nuevo_estado = 'PARCIAL'
-        
-        if matricula.estado_pago != nuevo_estado:
-            matricula.estado_pago = nuevo_estado
-            matricula.save()
-    
-    def _tiene_cuotas_vencidas(self, matricula_id: int) -> bool:
-        """Verificar si tiene cuotas vencidas"""
-        hoy = date.today()
-        count = self.session.query(func.count(CuotaModel.id))\
-            .filter(
-                and_(
-                    CuotaModel.matricula_id == matricula_id,
-                    CuotaModel.fecha_vencimiento < hoy,
-                    CuotaModel.estado == 'PENDIENTE'
-                )
-            )\
-            .scalar()
-        return count > 0
-    
-    def _calcular_dias_mora(self, matricula: MatriculaModel) -> int:
-        """Calcular días en mora para una matrícula"""
-        if matricula.estado_pago != 'MORA':
-            return 0
-        
-        # Obtener la cuota más antigua vencida
-        cuota_vencida = self.session.query(CuotaModel)\
-            .filter(
-                and_(
-                    CuotaModel.matricula_id == matricula.id,
-                    CuotaModel.fecha_vencimiento < date.today(),
-                    CuotaModel.estado == 'PENDIENTE'
-                )
-            )\
-            .order_by(asc(CuotaModel.fecha_vencimiento))\
-            .first()
-        
-        if cuota_vencida:
-            dias_mora = (date.today() - cuota_vencida.fecha_vencimiento).days
-            return max(0, dias_mora)
-        
-        return 0
-    
-    # ==================== MÉTODOS DE AUDITORÍA Y LOG ====================
-    
-    def _registrar_auditoria(self, accion: str, descripcion: str, usuario_id: Optional[int]) -> None:
-        """Registrar acción de auditoría"""
-        # Implementar según tu sistema de auditoría
-        logger.info(f"AUDITORIA - {accion} - Usuario: {usuario_id} - {descripcion}")
-    
-    def _registrar_movimiento_caja(
-        self,
-        tipo: str,
-        monto: Decimal,
-        descripcion: str,
-        referencia_tipo: str,
-        referencia_id: int
-    ) -> None:
-        """Registrar movimiento de caja"""
-        # Implementar según tu sistema de movimientos de caja
-        logger.info(f"CAJA - {tipo} - {monto} - {descripcion}")
-    
-    def _guardar_matricula(self, matricula: MatriculaModel) -> None:
-        """Guardar matrícula con manejo de errores"""
+
+    # ============================================================================
+    # MÉTODOS DE ACTUALIZACIÓN Y GESTIÓN
+    # ============================================================================
+
+    def actualizar_matricula(self, matricula_id, datos_actualizacion, usuario=None):
+        """
+        Actualiza una matrícula existente con registro de cambios.
+
+        Args:
+            matricula_id (int): ID de la matrícula
+            datos_actualizacion (dict): Campos a actualizar
+            usuario (str, optional): Usuario que realiza la acción
+
+        Returns:
+            dict: Resultado de la operación
+        """
         try:
-            if not matricula.save():
-                raise DatabaseException("Error al guardar matrícula")
+            # 1. VERIFICAR EXISTENCIA
+            matricula = self.matricula_model.get_by_id(matricula_id)
+            if not matricula:
+                return {"success": False, "message": "Matrícula no encontrada"}
+
+            # 2. VALIDAR CAMBIOS PERMITIDOS
+            validacion = self._validar_actualizacion_matricula(
+                matricula, datos_actualizacion
+            )
+            if not validacion["success"]:
+                return validacion
+
+            # 3. REGISTRAR HISTÓRICO DE CAMBIOS
+            if usuario:
+                self._registrar_cambio_matricula(
+                    matricula_id, matricula, datos_actualizacion, usuario
+                )
+
+            # 4. APLICAR ACTUALIZACIÓN
+            datos_actualizacion["updated_at"] = datetime.now()
+            exito = self.matricula_model.update(matricula_id, datos_actualizacion)
+
+            if exito:
+                # 5. PROCESAR CAMBIOS ESPECIALES
+                self._procesar_cambios_especiales(
+                    matricula_id, matricula, datos_actualizacion
+                )
+
+                return {
+                    "success": True,
+                    "message": "✅ Matrícula actualizada exitosamente",
+                    "matricula_id": matricula_id,
+                }
+            else:
+                return {
+                    "success": False,
+                    "message": "❌ Error al actualizar en base de datos",
+                }
+
         except Exception as e:
-            logger.error(f"Error guardando matrícula: {e}")
-            raise
-    
-    # ==================== MÉTODOS DE FACTORÍA ====================
-    
-    @classmethod
-    def crear_con_sesion(cls, session: Session) -> 'MatriculaController':
-        """Crear instancia con sesión proporcionada"""
-        return cls(session=session)
-    
-    @classmethod
-    def crear_singleton(cls) -> 'MatriculaController':
-        """Crear instancia singleton (para uso global)"""
-        if not hasattr(cls, '_instancia'):
-            from database import SessionLocal
-            session = SessionLocal()
-            cls._instancia = cls(session=session)
-        return cls._instancia
+            return {
+                "success": False,
+                "message": f"❌ Error al actualizar matrícula: {str(e)}",
+            }
+
+    def anular_matricula(self, matricula_id, motivo="", usuario=None):
+        """
+        Anula una matrícula cambiando su estado.
+
+        Args:
+            matricula_id (int): ID de la matrícula
+            motivo (str): Motivo de la anulación
+            usuario (str): Usuario que realiza la acción
+
+        Returns:
+            dict: Resultado de la operación
+        """
+        try:
+            # Verificar que existe
+            matricula = self.matricula_model.get_by_id(matricula_id)
+            if not matricula:
+                return {"success": False, "message": "Matrícula no encontrada"}
+
+            # Verificar que no esté ya anulada
+            if matricula.get("estado") == "Anulada":
+                return {"success": False, "message": "La matrícula ya está anulada"}
+
+            # Preparar datos de anulación
+            datos_anulacion = {
+                "estado": "Anulada",
+                "fecha_anulacion": datetime.now().strftime("%Y-%m-%d"),
+                "motivo_anulacion": motivo,
+                "updated_at": datetime.now(),
+            }
+
+            if usuario:
+                datos_anulacion["anulado_por"] = usuario
+
+            # Aplicar anulación
+            exito = self.matricula_model.update(matricula_id, datos_anulacion)
+
+            if exito:
+                # Registrar en histórico
+                self._registrar_anulacion(matricula_id, matricula, motivo, usuario)
+
+                # Actualizar contadores
+                self._actualizar_contadores_anulacion(matricula)
+
+                return {"success": True, "message": "✅ Matrícula anulada exitosamente"}
+            else:
+                return {"success": False, "message": "❌ Error al anular matrícula"}
+
+        except Exception as e:
+            return {
+                "success": False,
+                "message": f"❌ Error al anular matrícula: {str(e)}",
+            }
+
+    def completar_matricula(self, matricula_id, calificacion=None, observaciones=""):
+        """
+        Marca una matrícula como completada.
+
+        Args:
+            matricula_id (int): ID de la matrícula
+            calificacion (float, optional): Calificación final
+            observaciones (str): Observaciones del curso
+
+        Returns:
+            dict: Resultado de la operación
+        """
+        try:
+            datos_completar = {
+                "estado": "Completada",
+                "fecha_completacion": datetime.now().strftime("%Y-%m-%d"),
+                "observaciones": observaciones,
+                "updated_at": datetime.now(),
+            }
+
+            if calificacion is not None:
+                datos_completar["calificacion_final"] = calificacion
+
+            return self.actualizar_matricula(matricula_id, datos_completar)
+
+        except Exception as e:
+            return {
+                "success": False,
+                "message": f"❌ Error al completar matrícula: {str(e)}",
+            }
+
+    # ============================================================================
+    # MÉTODOS DE REPORTES Y ESTADÍSTICAS
+    # ============================================================================
+
+    def obtener_estadisticas(self, periodo=None, curso_id=None, docente_id=None):
+        """
+        Obtiene estadísticas detalladas de matrículas.
+
+        Args:
+            periodo (str): Periodo específico (YYYY-MM)
+            curso_id (int): ID de curso específico
+            docente_id (int): ID de docente específico
+
+        Returns:
+            dict: Estadísticas completas
+        """
+        try:
+            filtros = {}
+            if periodo:
+                filtros["periodo"] = periodo
+            if curso_id:
+                filtros["curso_id"] = curso_id
+            if docente_id:
+                filtros["docente_id"] = docente_id
+
+            # Obtener estadísticas básicas
+            estadisticas = self.matricula_model.get_estadisticas(filtros)
+
+            # Enriquecer con datos adicionales
+            estadisticas["periodo"] = periodo or "General"
+            estadisticas["fecha_consulta"] = datetime.now().strftime(
+                "%Y-%m-%d %H:%M:%S"
+            )
+
+            # Calcular porcentajes
+            total = estadisticas.get("total_matriculas", 0)
+            if total > 0:
+                estadisticas["porcentaje_activas"] = (
+                    estadisticas.get("activas", 0) / total
+                ) * 100
+                estadisticas["porcentaje_completadas"] = (
+                    estadisticas.get("completadas", 0) / total
+                ) * 100
+                estadisticas["porcentaje_anuladas"] = (
+                    estadisticas.get("anuladas", 0) / total
+                ) * 100
+                estadisticas["tasa_completacion"] = (
+                    estadisticas.get("completadas", 0)
+                    / max(estadisticas.get("activas", 0), 1)
+                ) * 100
+
+            return {"success": True, "data": estadisticas}
+
+        except Exception as e:
+            print(f"⚠️ Error al obtener estadísticas: {e}")
+            return {
+                "success": False,
+                "data": {
+                    "total_matriculas": 0,
+                    "activas": 0,
+                    "completadas": 0,
+                    "anuladas": 0,
+                    "total_recaudado": 0,
+                },
+            }
+
+    def generar_reporte_matriculas(self, tipo_reporte, parametros):
+        """
+        Genera diferentes tipos de reportes de matrículas.
+
+        Args:
+            tipo_reporte (str): Tipo de reporte a generar
+            parametros (dict): Parámetros específicos del reporte
+
+        Returns:
+            dict: Datos del reporte generado
+        """
+        try:
+            reportes_disponibles = {
+                "diario": self._generar_reporte_diario,
+                "mensual": self._generar_reporte_mensual,
+                "por_curso": self._generar_reporte_por_curso,
+                "por_docente": self._generar_reporte_por_docente,
+                "ingresos": self._generar_reporte_ingresos,
+            }
+
+            if tipo_reporte not in reportes_disponibles:
+                return {
+                    "success": False,
+                    "message": f"Tipo de reporte no válido: {tipo_reporte}",
+                }
+
+            # Generar reporte específico
+            reporte = reportes_disponibles[tipo_reporte](parametros)
+
+            return {
+                "success": True,
+                "reporte": tipo_reporte,
+                "fecha_generacion": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                "parametros": parametros,
+                "data": reporte,
+            }
+
+        except Exception as e:
+            return {
+                "success": False,
+                "message": f"❌ Error al generar reporte: {str(e)}",
+            }
+
+    # ============================================================================
+    # MÉTODOS DE RELACIONES Y CONSULTAS ESPECIALES
+    # ============================================================================
+
+    def obtener_matriculas_estudiante(self, estudiante_id, solo_activas=True):
+        """
+        Obtiene todas las matrículas de un estudiante.
+
+        Args:
+            estudiante_id (int): ID del estudiante
+            solo_activas (bool): True para filtrar solo matrículas activas
+
+        Returns:
+            list: Matrículas del estudiante
+        """
+        try:
+            matriculas = self.matricula_model.get_matriculas_estudiante(estudiante_id)
+
+            if solo_activas:
+                matriculas = [m for m in matriculas if m.get("estado") == "Activa"]
+
+            return {
+                "success": True,
+                "estudiante_id": estudiante_id,
+                "total": len(matriculas),
+                "activas": len([m for m in matriculas if m.get("estado") == "Activa"]),
+                "data": matriculas,
+            }
+
+        except Exception as e:
+            print(f"⚠️ Error al obtener matrículas del estudiante: {e}")
+            return {"success": False, "data": [], "total": 0}
+
+    def obtener_matriculas_curso(self, curso_id, periodo=None):
+        """
+        Obtiene todas las matrículas de un curso.
+
+        Args:
+            curso_id (int): ID del curso
+            periodo (str, optional): Periodo específico
+
+        Returns:
+            dict: Matrículas del curso con estadísticas
+        """
+        try:
+            filtros = {"curso_id": curso_id}
+            if periodo:
+                filtros["periodo"] = periodo
+
+            matriculas = self.matricula_model.get_matriculas_curso(curso_id, filtros)
+
+            # Obtener información del curso
+            curso = self.curso_model.get_by_id(curso_id)
+
+            # Calcular estadísticas
+            total = len(matriculas)
+            activas = len([m for m in matriculas if m.get("estado") == "Activa"])
+            completadas = len(
+                [m for m in matriculas if m.get("estado") == "Completada"]
+            )
+
+            return {
+                "success": True,
+                "curso": curso,
+                "estadisticas": {
+                    "total_matriculas": total,
+                    "activas": activas,
+                    "completadas": completadas,
+                    "anuladas": total - activas - completadas,
+                    "cupos_disponibles": (
+                        curso.get("cupo_maximo", 0) - total if curso else 0
+                    ),
+                },
+                "data": matriculas,
+            }
+
+        except Exception as e:
+            print(f"⚠️ Error al obtener matrículas del curso: {e}")
+            return {"success": False, "data": [], "estadisticas": {}}
+
+    # ============================================================================
+    # MÉTODOS AUXILIARES PRIVADOS
+    # ============================================================================
+
+    def _validar_creacion_matricula(self, estudiante_id, curso_id):
+        """
+        Valida condiciones previas para crear una matrícula.
+
+        Args:
+            estudiante_id (int): ID del estudiante
+            curso_id (int): ID del curso
+
+        Returns:
+            dict: Resultado de validación
+        """
+        # 1. Verificar existencia del estudiante
+        estudiante = self.estudiante_model.get_by_id(estudiante_id)
+        if not estudiante:
+            return {
+                "success": False,
+                "message": "Estudiante no encontrado en el sistema",
+            }
+
+        # 2. Verificar estado del estudiante
+        if estudiante.get("estado") != "Activo":
+            return {
+                "success": False,
+                "message": f'Estudiante no está activo (Estado: {estudiante.get("estado")})',
+            }
+
+        # 3. Verificar existencia del curso
+        curso = self.curso_model.get_by_id(curso_id)
+        if not curso:
+            return {"success": False, "message": "Curso no encontrado en el sistema"}
+
+        # 4. Verificar estado del curso
+        if curso.get("estado") != "Activo":
+            return {
+                "success": False,
+                "message": f'Curso no está activo (Estado: {curso.get("estado")})',
+            }
+
+        # 5. Verificar cupos disponibles
+        matriculas_curso = self.matricula_model.get_matriculas_curso(curso_id)
+        cupo_maximo = curso.get("cupo_maximo", 0)
+
+        if cupo_maximo > 0 and len(matriculas_curso) >= cupo_maximo:
+            return {
+                "success": False,
+                "message": f"Curso sin cupos disponibles (Cupo máximo: {cupo_maximo})",
+            }
+
+        return {"success": True, "estudiante": estudiante, "curso": curso}
+
+    def _verificar_matricula_existente(self, estudiante_id, curso_id):
+        """
+        Verifica si el estudiante ya está matriculado en el curso.
+
+        Args:
+            estudiante_id (int): ID del estudiante
+            curso_id (int): ID del curso
+
+        Returns:
+            bool: True si ya existe matrícula activa
+        """
+        try:
+            matriculas = self.matricula_model.get_matriculas_estudiante(estudiante_id)
+
+            for matricula in matriculas:
+                if matricula.get("curso_id") == curso_id and matricula.get(
+                    "estado"
+                ) in ["Activa", "En proceso"]:
+                    return True
+
+            return False
+
+        except Exception:
+            return False
+
+    def _procesar_pago_matricula(
+        self, matricula_id, estudiante_id, curso, monto, metodo_pago, fecha_pago
+    ):
+        """
+        Procesa el pago asociado a una matrícula.
+
+        Args:
+            matricula_id (int): ID de la matrícula
+            estudiante_id (int): ID del estudiante
+            curso (dict): Datos del curso
+            monto (float): Monto del pago
+            metodo_pago (str): Método de pago
+            fecha_pago (str): Fecha del pago
+
+        Returns:
+            dict: Resultado del procesamiento del pago
+        """
+        try:
+            # Registrar ingreso
+            ingreso_data = {
+                "estudiante_id": estudiante_id,
+                "matricula_id": matricula_id,
+                "monto": monto,
+                "concepto": f'Matrícula - {curso.get("nombre", "Curso")}',
+                "metodo_pago": metodo_pago,
+                "fecha_pago": fecha_pago,
+                "tipo_ingreso": "Matrícula",
+                "estado": "Confirmado",
+            }
+
+            ingreso_id = self.ingreso_model.registrar_ingreso(ingreso_data)
+
+            if ingreso_id:
+                return {
+                    "success": True,
+                    "ingreso_id": ingreso_id,
+                    "message": "Pago registrado exitosamente",
+                }
+            else:
+                return {"success": False, "message": "Error al registrar el pago"}
+
+        except Exception as e:
+            print(f"⚠️ Error al procesar pago: {e}")
+            return {
+                "success": False,
+                "message": f"Error en procesamiento de pago: {str(e)}",
+            }
+
+    def _actualizar_contadores_matricula(self, estudiante_id, curso_id):
+        """
+        Actualiza contadores después de crear una matrícula.
+
+        Args:
+            estudiante_id (int): ID del estudiante
+            curso_id (int): ID del curso
+        """
+        try:
+            # Actualizar contador de matrículas del estudiante
+            self.estudiante_model.incrementar_contador_matriculas(estudiante_id)
+
+            # Actualizar contador de estudiantes en curso
+            self.curso_model.incrementar_contador_estudiantes(curso_id)
+
+        except Exception as e:
+            print(f"⚠️ Error al actualizar contadores: {e}")
+
+    def _validar_actualizacion_matricula(self, matricula_actual, nuevos_datos):
+        """
+        Valida que los cambios a una matrícula sean permitidos.
+
+        Args:
+            matricula_actual (dict): Datos actuales
+            nuevos_datos (dict): Nuevos datos propuestos
+
+        Returns:
+            dict: Resultado de validación
+        """
+        estado_actual = matricula_actual.get("estado")
+        nuevo_estado = nuevos_datos.get("estado")
+
+        # Validar transiciones de estado
+        if nuevo_estado and nuevo_estado != estado_actual:
+            transiciones_validas = {
+                "Activa": ["En proceso", "Completada", "Anulada"],
+                "En proceso": ["Activa", "Anulada"],
+                "Completada": [],  # No se puede cambiar desde completada
+                "Anulada": [],  # No se puede cambiar desde anulada
+            }
+
+            if estado_actual in transiciones_validas:
+                if nuevo_estado not in transiciones_validas[estado_actual]:
+                    return {
+                        "success": False,
+                        "message": f'No se puede cambiar de "{estado_actual}" a "{nuevo_estado}"',
+                    }
+
+        return {"success": True}
+
+    def _registrar_cambio_matricula(
+        self, matricula_id, datos_anteriores, datos_nuevos, usuario
+    ):
+        """
+        Registra un cambio en el histórico de matrículas.
+
+        Args:
+            matricula_id (int): ID de la matrícula
+            datos_anteriores (dict): Datos antes del cambio
+            datos_nuevos (dict): Datos después del cambio
+            usuario (str): Usuario que realiza el cambio
+        """
+        try:
+            cambios = []
+            for campo, valor_nuevo in datos_nuevos.items():
+                if campo in datos_anteriores and datos_anteriores[campo] != valor_nuevo:
+                    cambios.append(
+                        {
+                            "campo": campo,
+                            "valor_anterior": datos_anteriores[campo],
+                            "valor_nuevo": valor_nuevo,
+                            "fecha_cambio": datetime.now(),
+                            "usuario": usuario,
+                        }
+                    )
+
+            if cambios:
+                self.matricula_model.registrar_cambios(matricula_id, cambios)
+
+        except Exception as e:
+            print(f"⚠️ Error al registrar cambios: {e}")
+
+    def _registrar_anulacion(self, matricula_id, matricula, motivo, usuario):
+        """
+        Registra detalles específicos de una anulación.
+
+        Args:
+            matricula_id (int): ID de la matrícula
+            matricula (dict): Datos de la matrícula
+            motivo (str): Motivo de anulación
+            usuario (str): Usuario que realiza la anulación
+        """
+        try:
+            registro_anulacion = {
+                "matricula_id": matricula_id,
+                "estudiante_id": matricula.get("estudiante_id"),
+                "curso_id": matricula.get("curso_id"),
+                "fecha_anulacion": datetime.now(),
+                "motivo": motivo,
+                "usuario": usuario,
+                "monto_pagado": matricula.get("monto_pagado", 0),
+                "estado_anterior": matricula.get("estado"),
+            }
+
+            self.matricula_model.registrar_anulacion(registro_anulacion)
+
+        except Exception as e:
+            print(f"⚠️ Error al registrar anulación: {e}")
+
+    def _actualizar_contadores_anulacion(self, matricula):
+        """
+        Actualiza contadores después de anular una matrícula.
+
+        Args:
+            matricula (dict): Datos de la matrícula anulada
+        """
+        try:
+            # Decrementar contador en curso si estaba activa
+            if matricula.get("estado") == "Activa":
+                self.curso_model.decrementar_contador_estudiantes(
+                    matricula.get("curso_id")
+                )
+
+        except Exception as e:
+            print(f"⚠️ Error al actualizar contadores de anulación: {e}")
+
+    # ============================================================================
+    # MÉTODOS DE GENERACIÓN DE REPORTES (PRIVADOS)
+    # ============================================================================
+
+    def _generar_reporte_diario(self, parametros):
+        """Genera reporte diario de matrículas."""
+        fecha = parametros.get("fecha", datetime.now().strftime("%Y-%m-%d"))
+
+        filtros = {"fecha_matricula": fecha}
+
+        matriculas = self.matricula_model.get_all_with_details(filtros)
+
+        return {
+            "fecha": fecha,
+            "total_matriculas": len(matriculas),
+            "matriculas": matriculas,
+            "resumen_por_curso": self._resumir_por_curso(matriculas),
+        }
+
+    def _generar_reporte_mensual(self, parametros):
+        """Genera reporte mensual de matrículas."""
+        mes = parametros.get("mes", datetime.now().strftime("%Y-%m"))
+
+        filtros = {"mes_matricula": mes}
+
+        matriculas = self.matricula_model.get_all_with_details(filtros)
+
+        return {
+            "mes": mes,
+            "total_matriculas": len(matriculas),
+            "ingresos_totales": sum(m.get("monto_pagado", 0) for m in matriculas),
+            "matriculas_por_dia": self._agrupar_por_dia(matriculas),
+            "resumen_por_curso": self._resumir_por_curso(matriculas),
+        }
+
+    def _generar_reporte_por_curso(self, parametros):
+        """Genera reporte de matrículas por curso."""
+        curso_id = parametros.get("curso_id")
+        periodo = parametros.get("periodo")
+
+        return self.obtener_matriculas_curso(curso_id, periodo)
+
+    def _generar_reporte_por_docente(self, parametros):
+        """Genera reporte de matrículas por docente."""
+        docente_id = parametros.get("docente_id")
+
+        # Obtener cursos del docente
+        cursos_docente = self.curso_model.get_cursos_por_docente(docente_id)
+
+        reporte = {
+            "docente": self.docente_model.get_by_id(docente_id),
+            "total_cursos": len(cursos_docente),
+            "cursos": [],
+        }
+
+        # Para cada curso, obtener matrículas
+        for curso in cursos_docente:
+            curso_id = curso["id"]
+            matricula_info = self.obtener_matriculas_curso(curso_id)
+            reporte["cursos"].append({"curso": curso, "matriculas": matricula_info})
+
+        return reporte
+
+    def _generar_reporte_ingresos(self, parametros):
+        """Genera reporte de ingresos por matrículas."""
+        fecha_inicio = parametros.get("fecha_inicio")
+        fecha_fin = parametros.get("fecha_fin") or datetime.now().strftime("%Y-%m-%d")
+
+        # Obtener ingresos del periodo
+        ingresos = self.ingreso_model.obtener_ingresos_periodo(
+            fecha_inicio, fecha_fin, tipo="Matrícula"
+        )
+
+        return {
+            "periodo": f"{fecha_inicio} a {fecha_fin}",
+            "total_ingresos": sum(i.get("monto", 0) for i in ingresos),
+            "ingresos_por_metodo": self._agrupar_por_metodo_pago(ingresos),
+            "ingresos_por_curso": self._agrupar_ingresos_por_curso(ingresos),
+            "detalle": ingresos,
+        }
+
+    # ============================================================================
+    # MÉTODOS DE AGRUPAMIENTO Y RESUMEN (PRIVADOS)
+    # ============================================================================
+
+    def _resumir_por_curso(self, matriculas):
+        """Agrupa matrículas por curso."""
+        resumen = {}
+
+        for matricula in matriculas:
+            curso_id = matricula.get("curso_id")
+            curso_nombre = matricula.get("curso_nombre", "Sin nombre")
+
+            if curso_id not in resumen:
+                resumen[curso_id] = {
+                    "nombre": curso_nombre,
+                    "total": 0,
+                    "activas": 0,
+                    "completadas": 0,
+                    "anuladas": 0,
+                }
+
+            resumen[curso_id]["total"] += 1
+
+            estado = matricula.get("estado", "")
+            if estado == "Activa":
+                resumen[curso_id]["activas"] += 1
+            elif estado == "Completada":
+                resumen[curso_id]["completadas"] += 1
+            elif estado == "Anulada":
+                resumen[curso_id]["anuladas"] += 1
+
+        return resumen
+
+    def _agrupar_por_dia(self, matriculas):
+        """Agrupa matrículas por día."""
+        agrupado = {}
+
+        for matricula in matriculas:
+            fecha = matricula.get("fecha_matricula")
+            if fecha not in agrupado:
+                agrupado[fecha] = []
+
+            agrupado[fecha].append(matricula)
+
+        # Ordenar por fecha
+        return dict(sorted(agrupado.items()))
+
+    def _agrupar_por_metodo_pago(self, ingresos):
+        """Agrupa ingresos por método de pago."""
+        agrupado = {}
+
+        for ingreso in ingresos:
+            metodo = ingreso.get("metodo_pago", "No especificado")
+            if metodo not in agrupado:
+                agrupado[metodo] = 0
+
+            agrupado[metodo] += ingreso.get("monto", 0)
+
+        return agrupado
+
+    def _agrupar_ingresos_por_curso(self, ingresos):
+        """Agrupa ingresos por curso."""
+        agrupado = {}
+
+        for ingreso in ingresos:
+            # Extraer curso del concepto o usar matrícula
+            concepto = ingreso.get("concepto", "")
+            curso_id = ingreso.get("curso_id") or 0
+
+            if "Matrícula - " in concepto:
+                curso_nombre = concepto.replace("Matrícula - ", "")
+            else:
+                curso_nombre = "Varios"
+
+            if curso_id not in agrupado:
+                agrupado[curso_id] = {
+                    "nombre": curso_nombre,
+                    "total": 0,
+                    "ingresos": [],
+                }
+
+            agrupado[curso_id]["total"] += ingreso.get("monto", 0)
+            agrupado[curso_id]["ingresos"].append(ingreso)
+
+        return agrupado
