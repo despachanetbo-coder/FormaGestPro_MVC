@@ -560,6 +560,24 @@ class ProgramaAcademicoModel(BaseModel):
     # MÉTODOS DE CONSULTA ESPECIALIZADA - OPTIMIZADOS
     # ============================================================================
 
+    def get_all(self, filtros: Optional[Dict[str, Any]] = None) -> List[Dict[str, Any]]:
+        """Obtiene programas con filtros."""
+        try:
+            with self.engine.connect() as conn:
+                query = f"SELECT * FROM {self.table_name} WHERE 1=1"
+                params = {}
+
+                if filtros and "estado" in filtros:
+                    query += " AND estado = :estado"
+                    params["estado"] = filtros["estado"]
+
+                query += " ORDER BY nombre"
+                result = conn.execute(text(query), params)
+                return [dict(row) for row in result.fetchall()]
+        except Exception as e:
+            self._log_error(f"Error obteniendo programas: {e}")
+            return []
+
     def get_activos(self, solo_con_cupos: bool = False) -> List[Dict[str, Any]]:
         """
         Obtiene programas activos de forma optimizada.

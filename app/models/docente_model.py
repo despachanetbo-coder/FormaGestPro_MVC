@@ -31,6 +31,20 @@ class DocenteModel(BaseModel):
     # MÉTODOS DE CONSULTA Y OBTENCIÓN DE DATOS
     # ============================================================================
 
+    def contar_activos(self) -> int:
+        """Cuenta docentes activos."""
+        try:
+            with self.engine.connect() as conn:
+                query = text(
+                    "SELECT COUNT(*) as total FROM docentes WHERE activo = TRUE"
+                )
+                result = conn.execute(query)
+                row = result.fetchone()
+                return row["total"] if row else 0
+        except Exception as e:
+            self._log_error(f"Error contando docentes activos: {e}")
+            return 0
+
     def get_all(self, solo_activos=False):
         """
         Obtiene todos los docentes registrados en el sistema.

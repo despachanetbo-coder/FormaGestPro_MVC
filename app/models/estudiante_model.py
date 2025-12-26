@@ -197,19 +197,58 @@ class EstudianteModel(BaseModel):
             print(f"ERROR en find_by_id: {e}")
             return None
 
-    @classmethod
-    def get_all(cls) -> List["EstudianteModel"]:
-        """Obtener todos los estudiantes"""
+    def contar_activos(self) -> int:
+        """Cuenta estudiantes activos."""
         try:
-            from database.database import db
-
-            query = f"SELECT * FROM {cls.TABLE_NAME} ORDER BY apellidos, nombres"
-            rows = db.fetch_all(query)
-
-            return [cls(**row) for row in rows]
-
+            with self.engine.connect() as conn:
+                query = text(
+                    """
+                    SELECT COUNT(*) as total 
+                    FROM estudiantes 
+                    WHERE activo = TRUE
+                """
+                )
+                result = conn.execute(query)
+                row = result.fetchone()
+                return row["total"] if row and "total" in row else 0
         except Exception as e:
-            logger.error(f"Error en get_all: {e}")
+            self._log_error(f"Error contando estudiantes activos: {e}")
+            return 0
+
+    def get_all(
+        self, filtros: Optional[Dict[str, Any]] = None, limit: Optional[int] = None
+    ) -> List[Dict[str, Any]]:
+        """
+        Obtiene todos los estudiantes con filtros opcionales.
+
+        Args:
+            filtros: Diccionario con filtros (ej: {'activo': True})
+            limit: Límite de resultados
+
+        Returns:
+            Lista de estudiantes
+        """
+        try:
+            with self.engine.connect() as conn:
+                query = f"SELECT * FROM {self.TABLE_NAME} WHERE 1=1"
+                params = {}
+
+                if filtros:
+                    if "activo" in filtros:
+                        query += " AND activo = :activo"
+                        params["activo"] = filtros["activo"]
+
+                query += " ORDER BY apellidos, nombres"
+
+                if limit:
+                    query += f" LIMIT {limit}"
+
+                result = conn.execute(text(query), params)
+                estudiantes = result.fetchall()
+
+                return [dict(estudiante) for estudiante in estudiantes]
+        except Exception as e:
+            self._log_error(f"Error obteniendo estudiantes: {e}")
             return []
 
     @classmethod
