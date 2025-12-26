@@ -1,818 +1,831 @@
 # app/views/windows/main_window_tabs.py
 """
-app/views/windows/main_window_tabs.py
-Ventana principal del sistema con sistema de pestañas
-Versión 2.0 - Interfaz profesional
+Ventana principal optimizada del sistema FormaGestPro.
+Versión 3.0 - Hereda de BaseView, sin menús superiores, centrada en pestañas.
+
+ESTRUCTURA PRINCIPAL:
+1. Ventana principal que hereda de BaseView (no QMainWindow)
+2. Sistema de pestañas profesional con estilos centralizados
+3. Gestión eficiente de recursos y carga bajo demanda
+4. Interfaz limpia y moderna sin elementos redundantes
 """
+
 import sys
 import logging
+from typing import Optional
 from pathlib import Path
 
+# PySide6 imports
 from PySide6.QtWidgets import (
-    QMainWindow,
     QWidget,
     QVBoxLayout,
     QHBoxLayout,
-    QLabel,
-    QPushButton,
     QTabWidget,
-    QMessageBox,
-    QStatusBar,
-    QToolBar,
-    QMenuBar,
-    QMenu,
-    QGroupBox,
-    QGridLayout,
+    QLabel,
     QFrame,
+    QPushButton,
+    QStatusBar,
     QSizePolicy,
+    QMessageBox,
 )
-from PySide6.QtCore import Qt, QSize
-from PySide6.QtGui import QAction, QIcon, QFont
+from PySide6.QtCore import Qt, Signal, Slot, QTimer
+from PySide6.QtGui import QIcon, QFont, QColor, QPalette
 
-from app.views.tabs.dashboard_tab import DashboardTab
-from app.views.tabs.estudiantes_tab import EstudiantesTab
-from app.views.tabs.docentes_tab import DocentesTab
-from app.views.tabs.programas_tab import ProgramasTab
-from app.views.tabs.financiero_tab import FinancieroTab
-from app.views.tabs.ayuda_tab import AyudaTab
+# Importar clase base
+from app.views.base_view import BaseView
+
+# Importar pestañas del sistema
+try:
+    from app.views.tabs.dashboard_tab import DashboardTab
+    from app.views.tabs.estudiantes_tab import EstudiantesTab
+    from app.views.tabs.docentes_tab import DocentesTab
+    from app.views.tabs.programas_tab import ProgramasTab
+    from app.views.tabs.financiero_tab import FinancieroTab
+    from app.views.tabs.ayuda_tab import AyudaTab
+
+    TABS_AVAILABLE = True
+except ImportError as e:
+    logger = logging.getLogger(__name__)
+    logger.warning(f"Algunas pestañas no están disponibles: {e}")
+    TABS_AVAILABLE = False
+    # Definir placeholders para evitar errores
+    DashboardTab = EstudiantesTab = DocentesTab = ProgramasTab = FinancieroTab = (
+        AyudaTab
+    ) = QWidget
 
 logger = logging.getLogger(__name__)
 
 
-class MainWindowTabs(QMainWindow):
-    """Ventana principal con sistema de pestañas profesionales"""
+class MainWindowTabs(BaseView):
+    """
+    Ventana principal optimizada del sistema FormaGestPro.
 
-    def __init__(self, parent=None):
-        super().__init__(parent)
-        print("🔧 Inicializando MainWindowTabs...")
+    Características principales:
+    1. Hereda de BaseView para estilos y utilidades centralizadas
+    2. Sin barra de menú ni barra de herramientas superiores
+    3. Sistema de pestañas como navegación principal
+    4. Carga de pestañas bajo demanda para mejor rendimiento
+    5. Estilos consistentes usando la configuración de BaseView
+    """
 
-        self.setup_window()
-        self.create_ui()
-        self.setup_connections()
-        self.setup_style()
+    # Señales específicas de la ventana principal
+    tab_changed = Signal(int, str)  # Índice de pestaña, título de pestaña
+    window_ready = Signal()
+    refresh_all_requested = Signal()
 
-        print("✅ MainWindowTabs inicializada correctamente")
+    def __init__(self, parent: Optional[QWidget] = None, title: str = "FormaGestPro"):
+        """
+        Inicializa la ventana principal del sistema.
 
-    def setup_window(self):
-        """Configurar propiedades de la ventana"""
-        # Configuración básica
-        self.setWindowTitle("FormaGestPro - Sistema de Gestión Académica")
-        self.setGeometry(100, 100, 1400, 900)  # x, y, width, height
+        Args:
+            parent: Widget padre (opcional)
+            title: Título de la ventana
+        """
+        super().__init__(parent, title)
+
+        logger.info("🚀 Inicializando MainWindowTabs (versión BaseView)...")
+
+        # Configuración específica de ventana principal
+        self._window_initialized = False
+        self._tabs_loaded = False
+
+        # Diccionario para almacenar instancias de pestañas
+        self.tab_instances = {}
+
+        # Configurar ventana
+        self._setup_window()
+
+        # Configurar interfaz de usuario
+        self._setup_ui()
+
+        # Configurar conexiones
+        self._setup_connections()
+
+        # Cargar pestañas iniciales
+        self._load_initial_tabs()
+
+        self._window_initialized = True
+        self.window_ready.emit()
+
+        logger.info("✅ MainWindowTabs inicializada correctamente")
+
+    # ============================================================================
+    # MÉTODOS DE CONFIGURACIÓN
+    # ============================================================================
+
+    def _setup_window(self):
+        """Configura las propiedades básicas de la ventana"""
+        # Establecer título de ventana
+        self.setWindowTitle(f"{self.view_title} - Sistema de Gestión Académica")
+
+        # Establecer tamaño mínimo y preferido
         self.setMinimumSize(1200, 700)
 
-    def create_ui(self):
-        """Crear todos los elementos de la interfaz"""
-        # 1. Crear barra de menú
-        self.create_menu_bar()
+        # Configurar política de tamaño
+        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
 
-        # 2. Crear barra de herramientas
-        self.create_toolbar()
+    def _setup_ui(self):
+        """Configura toda la interfaz de usuario"""
+        # Limpiar layout base heredado
+        self._clear_layout(self.main_layout)
 
-        # 3. Crear widget central con pestañas
-        self.create_central_widget()
+        # Ajustar márgenes para ventana principal
+        self.main_layout.setContentsMargins(0, 0, 0, 0)
+        self.main_layout.setSpacing(0)
 
-        # 4. Crear barra de estado
-        self.create_status_bar()
+        # 1. Crear barra de título personalizada
+        self._create_title_bar()
 
-    def create_menu_bar(self):
-        """Crear barra de menú"""
-        menubar = self.menuBar()
+        # 2. Crear sistema de pestañas
+        self._create_tab_system()
 
-        # Menú Archivo
-        menu_archivo = menubar.addMenu("&Archivo")
+        # 3. Crear barra de estado
+        self._create_status_bar()
 
-        action_salir = QAction("&Salir", self)
-        action_salir.setShortcut("Ctrl+Q")
-        action_salir.triggered.connect(self.close)
-        menu_archivo.addAction(action_salir)
+    def _create_title_bar(self):
+        """Crea una barra de título personalizada (opcional, sin menú)"""
+        title_frame = QFrame()
+        title_frame.setObjectName("TitleBar")
+        title_frame.setMaximumHeight(60)
+        title_frame.setMinimumHeight(50)
 
-        # Menú Gestión
-        menu_gestion = menubar.addMenu("&Gestión")
+        title_layout = QHBoxLayout(title_frame)
+        title_layout.setContentsMargins(
+            self.SIZES["padding_large"],
+            self.SIZES["padding_medium"],
+            self.SIZES["padding_large"],
+            self.SIZES["padding_medium"],
+        )
 
-        action_dashboard = QAction("&Dashboard", self)
-        action_dashboard.setShortcut("Ctrl+H")
-        action_dashboard.triggered.connect(lambda: self.tab_widget.setCurrentIndex(0))
-        menu_gestion.addAction(action_dashboard)
+        # Logo/Título de la aplicación
+        app_title = QLabel(f"🏛️ {self.view_title}")
+        app_title.setObjectName("AppTitle")
 
-        action_estudiantes = QAction("&Estudiantes", self)
-        action_estudiantes.setShortcut("Ctrl+E")
-        action_estudiantes.triggered.connect(lambda: self.tab_widget.setCurrentIndex(1))
-        menu_gestion.addAction(action_estudiantes)
+        # Configurar fuente del título usando BaseView
+        font_family, font_size, font_weight = self.FONTS["title"]
+        title_font = QFont(font_family, font_size + 4)  # Un poco más grande
+        title_font.setWeight(font_weight)
+        app_title.setFont(title_font)
 
-        action_docentes = QAction("&Docentes/Tutores", self)
-        action_docentes.setShortcut("Ctrl+D")
-        action_docentes.triggered.connect(lambda: self.tab_widget.setCurrentIndex(2))
-        menu_gestion.addAction(action_docentes)
+        # Configurar color del título
+        title_palette = app_title.palette()
+        title_palette.setColor(
+            app_title.foregroundRole(), QColor(self.COLORS["primary_dark"])
+        )
+        app_title.setPalette(title_palette)
 
-        action_programas = QAction("&Programas Académicos", self)
-        action_programas.setShortcut("Ctrl+P")
-        action_programas.triggered.connect(lambda: self.tab_widget.setCurrentIndex(3))
-        menu_gestion.addAction(action_programas)
+        title_layout.addWidget(app_title)
+        title_layout.addStretch()
 
-        action_financiero = QAction("&Financiero", self)
-        action_financiero.setShortcut("Ctrl+F")
-        action_financiero.triggered.connect(lambda: self.tab_widget.setCurrentIndex(4))
-        menu_gestion.addAction(action_financiero)
+        # Botones de control de ventana (minimizar, maximizar, cerrar)
+        control_layout = QHBoxLayout()
+        control_layout.setSpacing(self.SIZES["spacing_small"])
 
-        # Menú Ayuda
-        menu_ayuda = menubar.addMenu("&Ayuda")
+        # Botón de actualización global
+        self.btn_refresh_all = QPushButton("🔄 Actualizar Todo")
+        self.btn_refresh_all.setToolTip("Actualizar todas las pestañas")
+        self.btn_refresh_all.setMinimumHeight(32)
+        self.btn_refresh_all.setStyleSheet(
+            f"""
+            QPushButton {{
+                background-color: {self.COLORS["info"]};
+                color: {self.COLORS["white"]};
+                border-radius: {self.SIZES["border_radius"]}px;
+                padding: 6px 12px;
+                font-weight: 500;
+            }}
+            QPushButton:hover {{
+                background-color: {self.COLORS["secondary"]};
+            }}
+        """
+        )
+        control_layout.addWidget(self.btn_refresh_all)
 
-        action_acerca = QAction("&Acerca de...", self)
-        action_acerca.triggered.connect(self.show_about)
-        menu_ayuda.addAction(action_acerca)
+        title_layout.addLayout(control_layout)
 
-        action_manual = QAction("&Manual de usuario", self)
-        action_manual.triggered.connect(self.show_manual)
-        menu_ayuda.addAction(action_manual)
+        # Añadir barra de título al layout principal
+        self.main_layout.addWidget(title_frame)
 
-        action_ayuda = QAction("&Ayuda del Sistema", self)
-        action_ayuda.setShortcut("F1")
-        action_ayuda.triggered.connect(lambda: self.tab_widget.setCurrentIndex(5))
-        menu_ayuda.addAction(action_ayuda)
+        # Guardar referencia
+        self.widgets["title_bar"] = title_frame
+        self.widgets["btn_refresh_all"] = self.btn_refresh_all
 
-    def create_toolbar(self):
-        """Crear barra de herramientas"""
-        toolbar = QToolBar("Barra de herramientas principal")
-        toolbar.setIconSize(QSize(24, 24))
-        self.addToolBar(toolbar)
+    def _create_tab_system(self):
+        """Crea el sistema de pestañas principal"""
+        # Frame contenedor para las pestañas
+        tab_frame = QFrame()
+        tab_frame.setObjectName("TabFrame")
 
-        # Botón Dashboard
-        btn_dashboard = QAction("🏠 Dashboard", self)
-        btn_dashboard.triggered.connect(lambda: self.tab_widget.setCurrentIndex(0))
-        toolbar.addAction(btn_dashboard)
-
-        toolbar.addSeparator()
-
-        # Botón Estudiantes
-        btn_estudiantes = QAction("👤 Estudiantes", self)
-        btn_estudiantes.triggered.connect(lambda: self.tab_widget.setCurrentIndex(1))
-        toolbar.addAction(btn_estudiantes)
-
-        # Botón Docentes
-        btn_docentes = QAction("👨‍🏫 Docentes", self)
-        btn_docentes.triggered.connect(lambda: self.tab_widget.setCurrentIndex(2))
-        toolbar.addAction(btn_docentes)
-
-        # Botón Programas
-        btn_programas = QAction("📚 Programas", self)
-        btn_programas.triggered.connect(lambda: self.tab_widget.setCurrentIndex(3))
-        toolbar.addAction(btn_programas)
-
-        # Botón Financiero
-        btn_financiero = QAction("💰 Financiero", self)
-        btn_financiero.triggered.connect(lambda: self.tab_widget.setCurrentIndex(4))
-        toolbar.addAction(btn_financiero)
-
-        toolbar.addSeparator()
-
-        # Botón Ayuda
-        btn_ayuda = QAction("🔧 Ayuda", self)
-        btn_ayuda.triggered.connect(lambda: self.tab_widget.setCurrentIndex(5))
-        toolbar.addAction(btn_ayuda)
-
-        toolbar.addSeparator()
-
-        # Botón Actualizar
-        btn_actualizar = QAction("🔄 Actualizar", self)
-        btn_actualizar.triggered.connect(self.update_status)
-        toolbar.addAction(btn_actualizar)
-
-    def create_central_widget(self):
-        """Crear widget central con pestañas"""
-        central_widget = QWidget()
-        self.setCentralWidget(central_widget)
-
-        layout = QVBoxLayout(central_widget)
-        layout.setContentsMargins(5, 5, 5, 5)
+        tab_layout = QVBoxLayout(tab_frame)
+        tab_layout.setContentsMargins(0, 0, 0, 0)
+        tab_layout.setSpacing(0)
 
         # Crear widget de pestañas
         self.tab_widget = QTabWidget()
+        self.tab_widget.setObjectName("MainTabWidget")
         self.tab_widget.setDocumentMode(True)
         self.tab_widget.setMovable(True)
+        self.tab_widget.setTabsClosable(False)  # No cerrables por el usuario
 
-        # Crear pestañas
-        self.create_tabs()
-
-        layout.addWidget(self.tab_widget)
-
-    def create_tabs(self):
-        """Crear todas las pestañas del sistema"""
-        print("📁 Creando pestañas del sistema...")
-
-        # 1. Dashboard
-        try:
-            self.tab_dashboard = DashboardTab()
-            self.tab_widget.addTab(self.tab_dashboard, "🏠 Dashboard")
-            print("✅ DashboardTab cargado correctamente")
-        except Exception as e:
-            print(f"⚠️  Error cargando DashboardTab: {e}")
-            self.tab_dashboard = self.create_module_tab(
-                "🏠 Dashboard", "#3498db", "Panel de control principal", True
-            )
-            self.tab_widget.addTab(self.tab_dashboard, "🏠 Dashboard")
-
-        # 2. Estudiantes
-        try:
-            self.tab_estudiantes = EstudiantesTab()
-            self.tab_widget.addTab(self.tab_estudiantes, "👤 Estudiantes")
-            print("✅ EstudiantesTab cargado correctamente")
-        except Exception as e:
-            print(f"⚠️  Error cargando EstudiantesTab: {e}")
-            self.tab_estudiantes = self.create_module_tab(
-                "👤 Estudiantes", "#e74c3c", "Gestión de estudiantes"
-            )
-            self.tab_widget.addTab(self.tab_estudiantes, "👤 Estudiantes")
-
-        # 3. Docentes
-        try:
-            self.tab_docentes = DocentesTab()
-            self.tab_widget.addTab(self.tab_docentes, "👨‍🏫 Docentes/Tutores")
-            print("✅ DocentesTab cargado correctamente")
-        except Exception as e:
-            print(f"⚠️  Error cargando DocentesTab: {e}")
-            self.tab_docentes = self.create_module_tab(
-                "👨‍🏫 Docentes/Tutores", "#9b59b6", "Gestión de docentes y tutores"
-            )
-            self.tab_widget.addTab(self.tab_docentes, "👨‍🏫 Docentes/Tutores")
-
-        # 4. Programas
-        try:
-            self.tab_programas = ProgramasTab()
-            self.tab_widget.addTab(self.tab_programas, "📚 Programas")
-            print("✅ ProgramasTab cargado correctamente")
-        except Exception as e:
-            print(f"⚠️  Error cargando ProgramasTab: {e}")
-            self.tab_programas = self.create_module_tab(
-                "📚 Programas Académicos", "#2ecc71", "Gestión de programas y cursos"
-            )
-            self.tab_widget.addTab(self.tab_programas, "📚 Programas")
-
-        # 5. Financiero
-        try:
-            self.tab_financiero = FinancieroTab()
-            self.tab_widget.addTab(self.tab_financiero, "💰 Financiero")
-            print("✅ FinancieroTab cargado correctamente")
-        except Exception as e:
-            print(f"⚠️  Error cargando FinancieroTab: {e}")
-            self.tab_financiero = self.create_module_tab(
-                "💰 Gestión Financiera", "#f39c12", "Control financiero y contable"
-            )
-            self.tab_widget.addTab(self.tab_financiero, "💰 Financiero")
-
-        # 6. Ayuda
-        try:
-            self.tab_ayuda = AyudaTab()
-            self.tab_widget.addTab(self.tab_ayuda, "🔧 Ayuda")
-            print("✅ AyudaTab cargado correctamente")
-        except Exception as e:
-            print(f"⚠️  Error cargando AyudaTab: {e}")
-            self.tab_ayuda = self.create_help_tab()
-            self.tab_widget.addTab(self.tab_ayuda, "🔧 Ayuda")
-
-        print("✅ Todas las pestañas creadas")
-
-    def create_dashboard_tab(self):
-        """Crear pestaña de Dashboard/Inicio"""
-        from app.views.tabs.dashboard_tab import DashboardTab
-
-        try:
-            dashboard = DashboardTab()
-            return dashboard
-        except Exception as e:
-            print(f"⚠️  DashboardTab no disponible: {e}")
-            return self.create_module_tab(
-                "🏠 Dashboard", "#3498db", "Panel de control principal", True
-            )
-
-    def create_module_tab(self, title, color, description, show_stats=False):
-        """Crear pestaña para un módulo (placeholder)"""
-        widget = QWidget()
-        layout = QVBoxLayout(widget)
-        layout.setSpacing(20)
-        layout.setContentsMargins(30, 30, 30, 30)
-
-        # Encabezado
-        header_frame = QFrame()
-        header_frame.setStyleSheet(
+        # Configurar estilo de las pestañas usando BaseView
+        self.tab_widget.setStyleSheet(
             f"""
-            QFrame {{
-                background-color: {color}15;
-                border-radius: 15px;
-                padding: 20px;
+            QTabWidget::pane {{
+                border: 1px solid {self.COLORS["border"]};
+                border-top: none;
+                background-color: {self.COLORS["background"]};
+            }}
+            QTabBar::tab {{
+                background-color: {self.COLORS["light"]};
+                color: {self.COLORS["dark"]};
+                padding: {self.SIZES["padding_medium"]}px {self.SIZES["padding_large"]}px;
+                margin-right: {self.SIZES["padding_small"]}px;
+                border: 1px solid {self.COLORS["border"]};
+                border-bottom: none;
+                border-top-left-radius: {self.SIZES["border_radius"]}px;
+                border-top-right-radius: {self.SIZES["border_radius"]}px;
+                font-weight: 500;
+            }}
+            QTabBar::tab:selected {{
+                background-color: {self.COLORS["white"]};
+                color: {self.COLORS["primary"]};
+                border-bottom: 2px solid {self.COLORS["primary"]};
+            }}
+            QTabBar::tab:hover:!selected {{
+                background-color: {self.COLORS["gray_light"]};
             }}
         """
         )
 
-        header_layout = QVBoxLayout(header_frame)
+        tab_layout.addWidget(self.tab_widget)
+        self.main_layout.addWidget(tab_frame, 1)  # Factor de stretch 1
+
+        # Guardar referencia
+        self.widgets["tab_frame"] = tab_frame
+        self.widgets["tab_widget"] = self.tab_widget
+
+    def _create_status_bar(self):
+        """Crea una barra de estado simplificada"""
+        status_frame = QFrame()
+        status_frame.setObjectName("StatusBar")
+        status_frame.setMaximumHeight(30)
+        status_frame.setMinimumHeight(25)
+
+        status_layout = QHBoxLayout(status_frame)
+        status_layout.setContentsMargins(
+            self.SIZES["padding_medium"],
+            self.SIZES["padding_small"],
+            self.SIZES["padding_medium"],
+            self.SIZES["padding_small"],
+        )
+
+        # Estado del sistema
+        self.lbl_system_status = QLabel("✅ Sistema listo")
+        self.lbl_system_status.setFont(self._create_font("small"))
+        status_layout.addWidget(self.lbl_system_status)
+
+        status_layout.addStretch()
+
+        # Información de pestaña actual
+        self.lbl_tab_info = QLabel("")
+        self.lbl_tab_info.setFont(self._create_font("small"))
+        self.lbl_tab_info.setStyleSheet(f"color: {self.COLORS['gray']};")
+        status_layout.addWidget(self.lbl_tab_info)
+
+        self.main_layout.addWidget(status_frame)
+
+        # Guardar referencias
+        self.widgets["status_bar"] = status_frame
+        self.widgets["lbl_system_status"] = self.lbl_system_status
+        self.widgets["lbl_tab_info"] = self.lbl_tab_info
+
+    def _setup_connections(self):
+        """Configura todas las conexiones de señales y slots"""
+        # Conectar cambio de pestaña
+        self.tab_widget.currentChanged.connect(self._on_tab_changed)
+
+        # Conectar botón de actualización
+        self.btn_refresh_all.clicked.connect(self._refresh_all_tabs)
+
+        # Conectar señal de cierre
+        # (Si necesitas manejar cierre de ventana, puedes añadirlo aquí)
+
+    # ============================================================================
+    # MÉTODOS DE CARGA DE PESTAÑAS
+    # ============================================================================
+
+    def _load_initial_tabs(self):
+        """Carga las pestañas iniciales del sistema"""
+        if not TABS_AVAILABLE:
+            self._show_error_tabs()
+            return
+
+        logger.info("📂 Cargando pestañas del sistema...")
+
+        try:
+            # Lista de pestañas a cargar (ícono, clase, título)
+            tabs_to_load = [
+                ("🏠", DashboardTab, "Dashboard"),
+                ("👤", EstudiantesTab, "Estudiantes"),
+                ("👨‍🏫", DocentesTab, "Docentes"),
+                ("📚", ProgramasTab, "Programas"),
+                ("💰", FinancieroTab, "Financiero"),
+                ("⚙️", AyudaTab, "Configuración"),  # Renombrado de Ayuda a Configuración
+            ]
+
+            for icon, tab_class, title in tabs_to_load:
+                self._add_tab(tab_class, f"{icon} {title}")
+
+            self._tabs_loaded = True
+            logger.info(f"✅ {len(tabs_to_load)} pestañas cargadas correctamente")
+
+        except Exception as e:
+            logger.error(f"❌ Error cargando pestañas: {e}")
+            self._show_error_tabs()
+
+    def _add_tab(self, tab_class, tab_title):
+        """
+        Añade una pestaña al sistema.
+
+        Args:
+            tab_class: Clase de la pestaña a instanciar
+            tab_title: Título de la pestaña (con ícono)
+        """
+        try:
+            # Crear instancia de la pestaña
+            tab_instance = tab_class(parent=self)
+
+            # Almacenar referencia
+            tab_index = self.tab_widget.count()
+            self.tab_instances[tab_index] = {
+                "instance": tab_instance,
+                "title": tab_title,
+                "class": tab_class.__name__,
+            }
+
+            # Añadir al widget de pestañas
+            self.tab_widget.addTab(tab_instance, tab_title)
+
+            logger.debug(f"  ✅ Pestaña '{tab_title}' cargada correctamente")
+
+        except Exception as e:
+            logger.error(f"  ⚠️ Error cargando pestaña '{tab_title}': {e}")
+
+            # Crear pestaña de fallback
+            fallback_widget = self._create_fallback_tab(tab_title)
+            tab_index = self.tab_widget.count()
+
+            self.tab_instances[tab_index] = {
+                "instance": fallback_widget,
+                "title": tab_title,
+                "class": "FallbackTab",
+                "is_fallback": True,
+            }
+
+            self.tab_widget.addTab(fallback_widget, tab_title)
+
+    def _create_fallback_tab(self, title):
+        """
+        Crea una pestaña de respaldo cuando falla la carga de una pestaña.
+
+        Args:
+            title: Título de la pestaña
+
+        Returns:
+            QWidget: Widget de pestaña de respaldo
+        """
+        widget = QWidget()
+        layout = QVBoxLayout(widget)
+        layout.setSpacing(self.SIZES["spacing_large"])
+        layout.setContentsMargins(
+            self.SIZES["padding_large"] * 2,
+            self.SIZES["padding_large"] * 2,
+            self.SIZES["padding_large"] * 2,
+            self.SIZES["padding_large"] * 2,
+        )
+
+        # Ícono de error/advertencia
+        icon_label = QLabel("⚠️")
+        icon_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        icon_label.setStyleSheet(
+            f"""
+            QLabel {{
+                font-size: 64px;
+                color: {self.COLORS["warning"]};
+            }}
+        """
+        )
+        layout.addWidget(icon_label)
 
         # Título
         title_label = QLabel(title)
-        title_label.setAlignment(Qt.AlignCenter)
-        title_label.setStyleSheet(
-            f"""
-            QLabel {{
-                font-size: 32px;
-                font-weight: bold;
-                color: {color};
-                padding: 10px;
-            }}
-        """
+        title_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        title_label.setFont(self._create_font("title"))
+        title_palette = title_label.palette()
+        title_palette.setColor(
+            title_label.foregroundRole(), QColor(self.COLORS["dark"])
         )
-        header_layout.addWidget(title_label)
+        title_label.setPalette(title_palette)
+        layout.addWidget(title_label)
 
-        # Descripción
-        desc_label = QLabel(description)
-        desc_label.setAlignment(Qt.AlignCenter)
-        desc_label.setStyleSheet(
-            """
-            QLabel {
-                font-size: 18px;
-                color: #7f8c8d;
-                padding: 5px;
-            }
-        """
-        )
-        header_layout.addWidget(desc_label)
-
-        layout.addWidget(header_frame)
-
-        if show_stats:
-            # Estadísticas rápidas
-            stats_frame = QFrame()
-            stats_frame.setStyleSheet(
-                """
-                QFrame {
-                    background-color: white;
-                    border: 2px solid #ecf0f1;
-                    border-radius: 10px;
-                    padding: 20px;
-                }
-            """
-            )
-
-            stats_layout = QGridLayout(stats_frame)
-
-            stats_data = [
-                ("📊 Total Estudiantes", "24", "#3498db"),
-                ("👨‍🏫 Docentes Activos", "8", "#9b59b6"),
-                ("📚 Programas Activos", "6", "#2ecc71"),
-                ("💰 Ingresos del Mes", "Bs. 15,240", "#e74c3c"),
-            ]
-
-            for i, (label_text, value_text, stat_color) in enumerate(stats_data):
-                stat_widget = self.create_stat_widget(
-                    label_text, value_text, stat_color
-                )
-                stats_layout.addWidget(stat_widget, i // 2, i % 2)
-
-            layout.addWidget(stats_frame)
-
-        # Contenido principal
-        content_frame = QFrame()
-        content_frame.setStyleSheet(
-            """
-            QFrame {
-                background-color: white;
-                border: 2px solid #ecf0f1;
-                border-radius: 10px;
-                padding: 30px;
-            }
-        """
-        )
-
-        content_layout = QVBoxLayout(content_frame)
-
-        # Mensaje de desarrollo
-        dev_label = QLabel(
-            f"<div style='text-align: center; padding: 40px;'>"
-            f"<h2 style='color: #f39c12;'>🚧 Módulo en Desarrollo</h2>"
-            f"<p style='color: #7f8c8d; font-size: 16px;'>"
-            f"El módulo <strong>{title}</strong> se encuentra actualmente en desarrollo.<br>"
-            f"Próximamente estará disponible con todas sus funcionalidades."
+        # Mensaje
+        message_label = QLabel(
+            f"<div style='text-align: center;'>"
+            f"<p style='color: {self.COLORS['gray']}; font-size: 14px;'>"
+            f"El módulo <strong>{title}</strong> no está disponible temporalmente."
             f"</p>"
-            f"<p style='color: #95a5a6; font-size: 14px; margin-top: 20px;'>"
-            f"<strong>FormaGestPro v2.0</strong> - Sistema de Gestión Académica"
+            f"<p style='color: {self.COLORS['gray_light']}; font-size: 12px; margin-top: 20px;'>"
+            f"Esto puede deberse a:<br>"
+            f"• Dependencias faltantes<br>"
+            f"• Errores en la configuración<br>"
+            f"• El módulo está en mantenimiento"
             f"</p>"
             f"</div>"
         )
-        dev_label.setAlignment(Qt.AlignCenter)
-        dev_label.setTextFormat(Qt.RichText)
-        content_layout.addWidget(dev_label)
-
-        # Botones de acción
-        button_layout = QHBoxLayout()
-        button_layout.addStretch()
-
-        btn_quick_access = QPushButton(f"🚀 Acceder a {title.split()[0]}")
-        btn_quick_access.setStyleSheet(
-            f"""
-            QPushButton {{
-                background-color: {color};
-                color: white;
-                padding: 15px 30px;
-                font-size: 16px;
-                font-weight: bold;
-                border-radius: 8px;
-                min-width: 200px;
-            }}
-            QPushButton:hover {{
-                background-color: #2c3e50;
-            }}
-        """
-        )
-        btn_quick_access.clicked.connect(lambda: self.show_module_message(title))
-
-        button_layout.addWidget(btn_quick_access)
-        button_layout.addStretch()
-
-        content_layout.addLayout(button_layout)
-        layout.addWidget(content_frame)
+        message_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        message_label.setWordWrap(True)
+        layout.addWidget(message_label)
 
         layout.addStretch()
 
         return widget
 
-    def create_stat_widget(self, label, value, color):
-        """Crear widget de estadística"""
-        widget = QFrame()
-        widget.setStyleSheet(
-            f"""
-            QFrame {{
-                border-left: 5px solid {color};
-                background-color: white;
-                padding: 15px;
-                border-radius: 5px;
-            }}
+    def _show_error_tabs(self):
+        """Muestra un mensaje de error cuando no se pueden cargar las pestañas"""
+        error_widget = QWidget()
+        layout = QVBoxLayout(error_widget)
+        layout.setSpacing(self.SIZES["spacing_large"])
+        layout.setContentsMargins(50, 50, 50, 50)
+
+        error_label = QLabel(
+            f"<div style='text-align: center;'>"
+            f"<h1 style='color: {self.COLORS['danger']};'>❌ Error de Carga</h1>"
+            f"<p style='color: {self.COLORS['gray']};'>"
+            f"No se pudieron cargar las pestañas del sistema.<br>"
+            f"Por favor, verifica las dependencias y la configuración."
+            f"</p>"
+            f"</div>"
+        )
+        error_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        layout.addWidget(error_label)
+
+        self.tab_widget.addTab(error_widget, "⚠️ Error")
+
+    # ============================================================================
+    # MÉTODOS DE EVENTOS
+    # ============================================================================
+
+    @Slot(int)
+    def _on_tab_changed(self, index):
         """
-        )
+        Maneja el cambio de pestaña.
 
-        layout = QVBoxLayout(widget)
-
-        label_widget = QLabel(label)
-        label_widget.setStyleSheet(
-            """
-            QLabel {
-                font-size: 12px;
-                color: #7f8c8d;
-            }
+        Args:
+            index: Índice de la nueva pestaña seleccionada
         """
-        )
-        layout.addWidget(label_widget)
+        if index < 0 or index >= self.tab_widget.count():
+            return
 
-        value_widget = QLabel(value)
-        value_widget.setStyleSheet(
-            f"""
-            QLabel {{
-                font-size: 24px;
-                font-weight: bold;
-                color: {color};
-            }}
+        # Obtener información de la pestaña
+        tab_info = self.tab_instances.get(index, {})
+        tab_title = tab_info.get("title", "Desconocido")
+
+        # Actualizar barra de estado
+        self.lbl_tab_info.setText(f"{tab_title}")
+
+        # Emitir señal
+        self.tab_changed.emit(index, tab_title)
+
+        logger.debug(f"📌 Cambiado a pestaña: {tab_title} (índice: {index})")
+
+    @Slot()
+    def _refresh_all_tabs(self):
+        """Actualiza todas las pestañas cargadas"""
+        logger.info("🔄 Actualizando todas las pestañas...")
+
+        self.lbl_system_status.setText("⏳ Actualizando...")
+
+        try:
+            # Actualizar cada pestaña
+            for index, tab_info in self.tab_instances.items():
+                tab_instance = tab_info.get("instance")
+
+                # Si la pestaña tiene método refresh, llamarlo
+                if hasattr(tab_instance, "refresh"):
+                    try:
+                        tab_instance.refresh()
+                        logger.debug(f"  ✅ Pestaña {index} actualizada")
+                    except Exception as e:
+                        logger.warning(f"  ⚠️ Error actualizando pestaña {index}: {e}")
+
+            self.lbl_system_status.setText("✅ Actualización completada")
+            self.refresh_all_requested.emit()
+
+            # Restaurar mensaje después de 3 segundos
+            QTimer.singleShot(
+                3000, lambda: self.lbl_system_status.setText("✅ Sistema listo")
+            )
+
+        except Exception as e:
+            logger.error(f"❌ Error durante actualización: {e}")
+            self.lbl_system_status.setText("❌ Error en actualización")
+
+    # ============================================================================
+    # MÉTODOS PÚBLICOS
+    # ============================================================================
+
+    def get_current_tab(self):
         """
-        )
-        layout.addWidget(value_widget)
+        Obtiene la pestaña actualmente seleccionada.
 
-        return widget
-
-    def create_help_tab(self):
-        """Crear pestaña de Ayuda (placeholder)"""
-        widget = QWidget()
-        layout = QVBoxLayout(widget)
-        layout.setSpacing(20)
-        layout.setContentsMargins(40, 40, 40, 40)
-
-        # Título
-        title_label = QLabel("🔧 Ayuda y Soporte")
-        title_label.setAlignment(Qt.AlignCenter)
-        title_label.setStyleSheet(
-            """
-            QLabel {
-                font-size: 36px;
-                font-weight: bold;
-                color: #f39c12;
-                padding: 20px;
-            }
+        Returns:
+            tuple: (índice, instancia, título) o (None, None, None) si no hay selección
         """
-        )
-        layout.addWidget(title_label)
+        current_index = self.tab_widget.currentIndex()
 
-        # Contenedor de ayuda
-        help_container = QFrame()
-        help_container.setStyleSheet(
-            """
-            QFrame {
-                background-color: white;
-                border: 2px solid #fdf2e9;
-                border-radius: 15px;
-                padding: 30px;
-            }
+        if current_index < 0:
+            return None, None, None
+
+        tab_info = self.tab_instances.get(current_index, {})
+        return current_index, tab_info.get("instance"), tab_info.get("title")
+
+    def switch_to_tab(self, tab_index):
         """
-        )
+        Cambia a una pestaña específica.
 
-        help_layout = QVBoxLayout(help_container)
+        Args:
+            tab_index: Índice de la pestaña a la que cambiar
 
-        # Secciones de ayuda
-        help_sections = [
-            (
-                "📖 Manual de Usuario",
-                "Documentación completa del sistema con ejemplos y guías paso a paso.",
-            ),
-            (
-                "🎥 Video Tutoriales",
-                "Videos instructivos para aprender a usar cada módulo del sistema.",
-            ),
-            (
-                "❓ Preguntas Frecuentes",
-                "Respuestas a las dudas más comunes de los usuarios.",
-            ),
-            (
-                "📞 Soporte Técnico",
-                "Contacto para asistencia técnica y resolución de problemas.",
-            ),
-            (
-                "🔄 Actualizaciones",
-                "Información sobre las últimas actualizaciones y nuevas funcionalidades.",
-            ),
-        ]
-
-        for section_title, section_desc in help_sections:
-            section_widget = self.create_help_section(section_title, section_desc)
-            help_layout.addWidget(section_widget)
-
-        layout.addWidget(help_container)
-        layout.addStretch()
-
-        return widget
-
-    def create_help_section(self, title, description):
-        """Crear sección de ayuda"""
-        widget = QFrame()
-        widget.setStyleSheet(
-            """
-            QFrame {
-                background-color: #f9f9f9;
-                border-radius: 10px;
-                padding: 20px;
-                margin: 10px 0;
-            }
-            QFrame:hover {
-                background-color: #f0f0f0;
-            }
+        Returns:
+            bool: True si el cambio fue exitoso, False en caso contrario
         """
-        )
+        if 0 <= tab_index < self.tab_widget.count():
+            self.tab_widget.setCurrentIndex(tab_index)
+            return True
+        return False
 
-        layout = QHBoxLayout(widget)
-
-        # Contenido
-        content_layout = QVBoxLayout()
-
-        title_label = QLabel(title)
-        title_label.setStyleSheet(
-            """
-            QLabel {
-                font-size: 16px;
-                font-weight: bold;
-                color: #2c3e50;
-            }
+    def switch_to_tab_by_name(self, tab_name):
         """
-        )
-        content_layout.addWidget(title_label)
+        Cambia a una pestaña por su nombre.
 
-        desc_label = QLabel(description)
-        desc_label.setStyleSheet(
-            """
-            QLabel {
-                font-size: 14px;
-                color: #7f8c8d;
-                padding-top: 5px;
-            }
+        Args:
+            tab_name: Nombre de la pestaña (sin ícono)
+
+        Returns:
+            bool: True si el cambio fue exitoso, False en caso contrario
         """
-        )
-        desc_label.setWordWrap(True)
-        content_layout.addWidget(desc_label)
+        for index, tab_info in self.tab_instances.items():
+            if tab_name.lower() in tab_info.get("title", "").lower():
+                return self.switch_to_tab(index)
+        return False
 
-        layout.addLayout(content_layout)
-
-        # Botón
-        btn = QPushButton("➔")
-        btn.setStyleSheet(
-            """
-            QPushButton {
-                background-color: #f39c12;
-                color: white;
-                border-radius: 15px;
-                font-size: 16px;
-                font-weight: bold;
-                min-width: 30px;
-                min-height: 30px;
-            }
-            QPushButton:hover {
-                background-color: #e67e22;
-            }
+    def add_custom_tab(self, widget, title, icon="📋"):
         """
-        )
-        btn.clicked.connect(lambda: self.show_help_message(title))
+        Añade una pestaña personalizada al sistema.
 
-        layout.addWidget(btn)
+        Args:
+            widget: Widget a añadir como pestaña
+            title: Título de la pestaña
+            icon: Ícono de la pestaña (opcional)
 
-        return widget
-
-    def create_status_bar(self):
-        """Crear barra de estado"""
-        status_bar = QStatusBar()
-        self.setStatusBar(status_bar)
-
-        # Mensaje inicial
-        status_bar.showMessage("✅ Sistema listo - Bienvenido a FormaGestPro", 5000)
-
-        # Widgets adicionales en barra de estado
-        status_bar.addPermanentWidget(QLabel("FormaGestPro v2.0"))
-        status_bar.addPermanentWidget(QLabel(" | "))
-        status_bar.addPermanentWidget(QLabel("© Formación Continua Consultora"))
-
-    def setup_connections(self):
-        """Configurar conexiones de señales"""
-        # Conectar cambio de pestaña
-        self.tab_widget.currentChanged.connect(self.on_tab_changed)
-
-    def setup_style(self):
-        """Configurar estilos de la aplicación"""
-        # Estilo para las pestañas
-        self.tab_widget.setStyleSheet(
-            """
-            QTabWidget::pane {
-                border: 2px solid #ddd;
-                background-color: white;
-                border-radius: 10px;
-                margin-top: 5px;
-            }
-            QTabBar::tab {
-                background-color: #f8f9fa;
-                padding: 12px 25px;
-                margin-right: 3px;
-                border: 1px solid #ddd;
-                border-bottom: none;
-                border-top-left-radius: 8px;
-                border-top-right-radius: 8px;
-                font-weight: bold;
-                color: #2c3e50;
-                font-size: 13px;
-                min-width: 120px;
-            }
-            QTabBar::tab:selected {
-                background-color: #3498db;
-                color: white;
-                border-color: #2980b9;
-            }
-            QTabBar::tab:hover:!selected {
-                background-color: #ecf0f1;
-            }
-            QTabBar::tab:first {
-                margin-left: 5px;
-            }
+        Returns:
+            int: Índice de la nueva pestaña, o -1 en caso de error
         """
-        )
+        try:
+            full_title = f"{icon} {title}" if icon else title
 
-        # Estilo general
-        self.setStyleSheet(
-            """
-            QMainWindow {
-                background-color: #f5f7fa;
+            # Añadir pestaña
+            tab_index = self.tab_widget.count()
+            self.tab_widget.addTab(widget, full_title)
+
+            # Almacenar información
+            self.tab_instances[tab_index] = {
+                "instance": widget,
+                "title": full_title,
+                "class": widget.__class__.__name__,
+                "is_custom": True,
             }
-            QPushButton {
-                padding: 8px 16px;
-                border-radius: 6px;
-                font-weight: bold;
-            }
-            QLabel {
-                font-family: 'Segoe UI', Arial, sans-serif;
-            }
+
+            logger.info(f"📋 Pestaña personalizada '{title}' añadida")
+            return tab_index
+
+        except Exception as e:
+            logger.error(f"❌ Error añadiendo pestaña personalizada: {e}")
+            return -1
+
+    # ============================================================================
+    # MÉTODOS DE UTILIDAD (HEREDADOS/EXTENDIDOS)
+    # ============================================================================
+
+    def _create_font(self, font_type: str = "normal") -> QFont:
         """
+        Crea una fuente QFont según la configuración de BaseView.
+
+        Args:
+            font_type: Tipo de fuente (title, subtitle, header, normal, small, monospace)
+
+        Returns:
+            QFont: Fuente configurada
+        """
+        if font_type not in self.FONTS:
+            logger.warning(
+                f"Tipo de fuente '{font_type}' no encontrado. Usando 'normal'."
+            )
+            font_type = "normal"
+
+        try:
+            font_family, font_size, font_weight = self.FONTS[font_type]
+            font = QFont(font_family, font_size)
+            font.setWeight(font_weight)
+            return font
+        except Exception as e:
+            logger.error(f"Error creando fuente '{font_type}': {e}")
+            return QFont()
+
+    def _clear_layout(self, layout):
+        """
+        Limpia todos los widgets de un layout de manera segura.
+
+        Args:
+            layout: Layout a limpiar
+        """
+        if not layout:
+            return
+
+        while layout.count():
+            item = layout.takeAt(0)
+            if item is None:
+                continue
+
+            widget = item.widget()
+            if widget:
+                widget.setParent(None)
+                widget.deleteLater()
+            elif item.layout():
+                self._clear_layout(item.layout())
+                item.layout().deleteLater()
+
+    def show_message(
+        self, title: str, message: str, message_type: str = "info"
+    ) -> bool:
+        """
+        Muestra un mensaje al usuario usando los estilos de BaseView.
+
+        Args:
+            title: Título del mensaje
+            message: Contenido del mensaje
+            message_type: Tipo de mensaje (info, warning, error, question)
+
+        Returns:
+            bool: Resultado si es pregunta
+        """
+        try:
+            # Mapeo de strings a QMessageBox.Icon
+            icon_map = {
+                "info": QMessageBox.Icon.Information,
+                "information": QMessageBox.Icon.Information,
+                "warning": QMessageBox.Icon.Warning,
+                "error": QMessageBox.Icon.Critical,
+                "critical": QMessageBox.Icon.Critical,
+                "question": QMessageBox.Icon.Question,
+            }
+
+            # Normalizar el tipo de mensaje
+            normalized_type = message_type.lower().strip()
+
+            # Obtener el icono correspondiente
+            if normalized_type in icon_map:
+                icon = icon_map[normalized_type]
+            else:
+                logger.warning(
+                    f"Tipo de mensaje '{message_type}' no reconocido. Usando 'info'."
+                )
+                icon = QMessageBox.Icon.Information
+
+            # Llamar al método de la clase padre
+            return super().show_message(title, message, icon)
+
+        except Exception as e:
+            logger.error(f"Error mostrando mensaje: {e}")
+            # Implementación de respaldo local
+            return self._show_message_backup(title, message, message_type)
+
+    def _show_message_backup(
+        self, title: str, message: str, message_type: str = "info"
+    ) -> bool:
+        """
+        Implementación de respaldo para mostrar mensajes.
+
+        Args:
+            title: Título del mensaje
+            message: Contenido del mensaje
+            message_type: Tipo de mensaje
+
+        Returns:
+            bool: Resultado si es pregunta
+        """
+        try:
+            msg_box = QMessageBox(self)
+            msg_box.setWindowTitle(title)
+            msg_box.setText(message)
+
+            # Configurar icono según tipo
+            if message_type == "info":
+                msg_box.setIcon(QMessageBox.Icon.Information)
+            elif message_type == "warning":
+                msg_box.setIcon(QMessageBox.Icon.Warning)
+            elif message_type == "error":
+                msg_box.setIcon(QMessageBox.Icon.Critical)
+            elif message_type == "question":
+                msg_box.setIcon(QMessageBox.Icon.Question)
+                msg_box.setStandardButtons(
+                    QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+                )
+                # Traducir botones al español
+                msg_box.setButtonText(QMessageBox.StandardButton.Yes, "Sí")
+                msg_box.setButtonText(QMessageBox.StandardButton.No, "No")
+                return msg_box.exec() == QMessageBox.StandardButton.Yes
+            else:
+                msg_box.setIcon(QMessageBox.Icon.Information)
+
+            # Para mensajes no de pregunta
+            msg_box.setStandardButtons(QMessageBox.StandardButton.Ok)
+            msg_box.setButtonText(QMessageBox.StandardButton.Ok, "Aceptar")
+            msg_box.exec()
+            return True
+
+        except Exception as e:
+            logger.error(f"Error crítico en backup de show_message: {e}")
+            # Último recurso: mostrar en consola
+            print(f"[{title.upper()}] {message}")
+            return False
+
+
+# ============================================================================
+# FUNCIÓN DE INICIALIZACIÓN
+# ============================================================================
+
+
+def create_main_window():
+    """
+    Función para crear y configurar la ventana principal.
+
+    Returns:
+        MainWindowTabs: Instancia configurada de la ventana principal
+    """
+    try:
+        window = MainWindowTabs(title="FormaGestPro")
+
+        # Centrar ventana en la pantalla
+        screen_geometry = window.screen().availableGeometry()
+        window_geometry = window.frameGeometry()
+
+        center_point = screen_geometry.center()
+        window_geometry.moveCenter(center_point)
+        window.move(window_geometry.topLeft())
+
+        return window
+
+    except Exception as e:
+        logger.error(f"❌ Error crítico creando ventana principal: {e}")
+
+        # Crear ventana de emergencia
+        emergency_window = QWidget()
+        emergency_window.setWindowTitle("FormaGestPro - Error")
+        emergency_window.setGeometry(100, 100, 600, 400)
+
+        layout = QVBoxLayout(emergency_window)
+        error_label = QLabel(
+            f"<h1 style='color: #e74c3c;'>❌ Error Crítico</h1>"
+            f"<p>No se pudo crear la ventana principal:</p>"
+            f"<pre>{str(e)}</pre>"
+            f"<p>Por favor, contacte al administrador del sistema.</p>"
         )
+        error_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        layout.addWidget(error_label)
 
-    def on_tab_changed(self, index):
-        """Manejar cambio de pestaña"""
-        tab_names = [
-            "Dashboard",
-            "Estudiantes",
-            "Docentes",
-            "Programas",
-            "Financiero",
-            "Ayuda",
-        ]
-        if 0 <= index < len(tab_names):
-            message = f"📁 Módulo activo: {tab_names[index]}"
-            self.statusBar().showMessage(message, 3000)
-
-        # Actualizar interfaz si el tab tiene el método
-        current_tab = self.tab_widget.widget(index)
-        if hasattr(current_tab, "actualizar_interfaz"):
-            try:
-                current_tab.actualizar_interfaz()
-            except Exception as e:
-                logger.error(f"Error al actualizar interfaz: {e}")
-
-    def show_module_message(self, module_name):
-        """Mostrar mensaje informativo del módulo"""
-        QMessageBox.information(
-            self,
-            f"Acceso a {module_name}",
-            f"<h3>Módulo: {module_name}</h3>"
-            f"<p>Esta funcionalidad está actualmente en desarrollo.</p>"
-            f"<p>Estará disponible en la próxima actualización del sistema FormaGestPro.</p>"
-            f"<hr>"
-            f"<p><small><i>Formación Continua Consultora</i></small></p>",
-            QMessageBox.StandardButton.Ok,
-        )
-
-    def show_help_message(self, help_topic):
-        """Mostrar mensaje de ayuda"""
-        QMessageBox.information(
-            self,
-            f"Ayuda: {help_topic}",
-            f"<h3>{help_topic}</h3>"
-            f"<p>Esta sección de ayuda está en desarrollo.</p>"
-            f"<p>Próximamente estará disponible con información completa.</p>",
-            QMessageBox.StandardButton.Ok,
-        )
-
-    def show_about(self):
-        """Mostrar información acerca del sistema"""
-        QMessageBox.about(
-            self,
-            "Acerca de FormaGestPro",
-            """<h2>FormaGestPro</h2>
-            <h3>Sistema de Gestión Académica</h3>
-            
-            <p><b>Versión:</b> 2.0 (Interfaz con Pestañas)</p>
-            <p><b>Desarrollado por:</b> Equipo de Desarrollo</p>
-            <p><b>© 2024 Formación Continua Consultora</b></p>
-            
-            <hr>
-            
-            <h4>Características principales:</h4>
-            <ul>
-                <li>👤 Gestión integral de estudiantes</li>
-                <li>👨‍🏫 Administración de docentes/tutores</li>
-                <li>📚 Control de programas académicos</li>
-                <li>💰 Sistema financiero y contable</li>
-                <li>📊 Reportes y estadísticas</li>
-                <li>🔧 Interfaz moderna e intuitiva</li>
-            </ul>
-            
-            <p><i>Software desarrollado con PySide6 y Python</i></p>
-            """,
-        )
-
-    def show_manual(self):
-        """Mostrar manual del usuario"""
-        QMessageBox.information(
-            self,
-            "Manual de Usuario",
-            "<h3>Manual de Usuario FormaGestPro</h3>"
-            "<p>El manual completo está en desarrollo.</p>"
-            "<p>Para asistencia inmediata:</p>"
-            "<ul>"
-            "<li>Use los menús y pestañas para navegar</li>"
-            "<li>Cada módulo tiene instrucciones específicas</li>"
-            "<li>Contacte al administrador del sistema</li>"
-            "</ul>",
-            QMessageBox.StandardButton.Ok,
-        )
-
-    def update_status(self):
-        """Actualizar estado del sistema"""
-        self.statusBar().showMessage(
-            "🔄 Sistema actualizado - " + "Todos los módulos están operativos", 3000
-        )
-
-    def closeEvent(self, event):
-        """Manejar el cierre de la aplicación"""
-        reply = QMessageBox.question(
-            self,
-            "Confirmar salida",
-            "¿Está seguro de que desea salir del sistema FormaGestPro?",
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-            QMessageBox.StandardButton.No,
-        )
-
-        if reply == QMessageBox.StandardButton.Yes:
-            print("👋 FormaGestPro cerrado correctamente")
-            event.accept()
-        else:
-            event.ignore()
+        return emergency_window
 
 
-# Punto de entrada para pruebas directas
+# ============================================================================
+# PUNTO DE ENTRADA PARA PRUEBAS
+# ============================================================================
+
 if __name__ == "__main__":
-    print("🧪 Ejecutando MainWindowTabs en modo prueba...")
+    # Configurar logging
+    logging.basicConfig(
+        level=logging.DEBUG,
+        format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    )
 
+    # Crear aplicación
     from PySide6.QtWidgets import QApplication
 
     app = QApplication(sys.argv)
-    app.setStyle("Fusion")
 
-    window = MainWindowTabs()
+    # Crear y mostrar ventana principal
+    window = create_main_window()
     window.show()
 
-    print("✅ Prueba iniciada - Ventana mostrada")
+    # Ejecutar aplicación
     sys.exit(app.exec())
