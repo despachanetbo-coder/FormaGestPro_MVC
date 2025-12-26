@@ -1,766 +1,562 @@
-# app/models/docente_model.py
-"""
-Modelo para gestión de docentes en el sistema FormaGestPro.
-Maneja todas las operaciones de base de datos relacionadas con docentes
-usando la arquitectura centralizada de conexión.
-"""
+# app/models/docente_model.py - Versión corregida y optimizada
+import sys
+import os
 
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from .base_model import BaseModel
 from datetime import datetime
-from app.models.base_model import BaseModel
-from sqlalchemy import text
 
 
 class DocenteModel(BaseModel):
-    """
-    Modelo para operaciones de base de datos de docentes.
-
-    Hereda de BaseModel para usar la conexión centralizada a la base de datos.
-    Implementa todas las funcionalidades del repositorio original.
-    """
-
     def __init__(self):
-        """
-        Inicializa el modelo de docentes.
-
-        Configura el nombre de la tabla y cualquier atributo específico necesario.
-        """
+        """Inicializa el modelo de docentes"""
         super().__init__()
         self.table_name = "docentes"
 
-    # ============================================================================
-    # MÉTODOS DE CONSULTA Y OBTENCIÓN DE DATOS
-    # ============================================================================
+    # ============ MÉTODOS CRUD BÁSICOS ============
 
-    def contar_activos(self) -> int:
-        """Cuenta docentes activos."""
-        try:
-            with self.engine.connect() as conn:
-                query = text(
-                    "SELECT COUNT(*) as total FROM docentes WHERE activo = TRUE"
-                )
-                result = conn.execute(query)
-                row = result.fetchone()
-                return row["total"] if row else 0
-        except Exception as e:
-            self._log_error(f"Error contando docentes activos: {e}")
-            return 0
-
-    def get_all(self, solo_activos=False):
+    def create(self, data):
         """
-        Obtiene todos los docentes registrados en el sistema.
-
+        Crea un nuevo docente
         Args:
-            solo_activos (bool, optional): Si es True, solo devuelve docentes activos.
-                Default es False (devuelve todos).
-
+            data: Diccionario con los datos del docente
         Returns:
-            list: Lista de diccionarios con los datos de los docentes.
-                Retorna lista vacía si ocurre un error o no hay datos.
-
-        Examples:
-            >>> docente_model = DocenteModel()
-            >>> todos_docentes = docente_model.get_all()
-            >>> docentes_activos = docente_model.get_all(solo_activos=True)
+            ID del docente creado o None si hay error
         """
+        required_fields = ["ci", "nombre", "apellido", "email", "telefono"]
+
+        # Validar campos requeridos
+        for field in required_fields:
+            if field not in data:
+                print(f"Error: Campo requerido '{field}' no encontrado")
+                return None
+
         try:
-            with self.engine.connect() as conn:
-                # Construir consulta base
-                if solo_activos:
-                    query = text(
-                        f"""
-                        SELECT * FROM {self.table_name} 
-                        WHERE estado = 'Activo'
-                        ORDER BY apellido, nombre
-                    """
-                    )
-                else:
-                    query = text(
-                        f"""
-                        SELECT * FROM {self.table_name} 
-                        ORDER BY apellido, nombre
-                    """
-                    )
+            query = """
+            INSERT INTO docentes 
+            (ci, nombre, apellido, email, telefono, direccion, fecha_nacimiento, genero, 
+             departamento_id, titulo_academico, especialidad, estado) 
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) 
+            RETURNING id
+            """
 
-                # Ejecutar consulta
-                result = conn.execute(query)
-                docentes = result.fetchall()
-
-                # Convertir resultados a diccionarios
-                return [dict(docente) for docente in docentes]
-
-        except Exception as error:
-            self._log_error(f"Error al obtener todos los docentes: {error}")
-            return []
-
-    def get_by_id(self, docente_id):
-        """
-        Obtiene un docente específico por su ID.
-
-        Args:
-            docente_id (int): ID único del docente a consultar.
-
-        Returns:
-            dict or None: Diccionario con los datos del docente si existe,
-                None si no se encuentra o ocurre un error.
-
-        Examples:
-            >>> docente = docente_model.get_by_id(1)
-            >>> if docente:
-            >>>     print(f"Docente: {docente['nombre']} {docente['apellido']}")
-        """
-        try:
-            with self.engine.connect() as conn:
-                query = text(
-                    f"""
-                    SELECT * FROM {self.table_name} 
-                    WHERE id = :docente_id
-                """
-                )
-
-                result = conn.execute(query, {"docente_id": docente_id})
-                docente = result.fetchone()
-
-                return dict(docente) if docente else None
-
-        except Exception as error:
-            self._log_error(f"Error al obtener docente por ID {docente_id}: {error}")
-            return None
-
-    def get_by_email(self, email):
-        """
-        Obtiene un docente por su dirección de email.
-
-        Args:
-            email (str): Email del docente a buscar.
-
-        Returns:
-            dict or None: Datos del docente si existe, None en caso contrario.
-
-        Examples:
-            >>> docente = docente_model.get_by_email("profesor@ejemplo.com")
-        """
-        try:
-            with self.engine.connect() as conn:
-                query = text(
-                    f"""
-                    SELECT * FROM {self.table_name} 
-                    WHERE email = :email
-                """
-                )
-
-                result = conn.execute(query, {"email": email})
-                docente = result.fetchone()
-
-                return dict(docente) if docente else None
-
-        except Exception as error:
-            self._log_error(f"Error al obtener docente por email {email}: {error}")
-            return None
-
-    def get_by_identificacion(self, identificacion):
-        """
-        Obtiene un docente por su número de identificación.
-
-        Args:
-            identificacion (str): Número de identificación del docente.
-
-        Returns:
-            dict or None: Datos del docente si existe, None en caso contrario.
-
-        Examples:
-            >>> docente = docente_model.get_by_identificacion("12345678")
-        """
-        try:
-            with self.engine.connect() as conn:
-                query = text(
-                    f"""
-                    SELECT * FROM {self.table_name} 
-                    WHERE identificacion = :identificacion
-                """
-                )
-
-                result = conn.execute(query, {"identificacion": identificacion})
-                docente = result.fetchone()
-
-                return dict(docente) if docente else None
-
-        except Exception as error:
-            self._log_error(
-                f"Error al obtener docente por identificación {identificacion}: {error}"
+            params = (
+                data["ci"],
+                data["nombre"],
+                data["apellido"],
+                data["email"],
+                data.get("telefono", ""),
+                data.get("direccion", ""),
+                data.get("fecha_nacimiento"),
+                data.get("genero", ""),
+                data.get("departamento_id"),
+                data.get("titulo_academico", ""),
+                data.get("especialidad", ""),
+                data.get("estado", "Activo"),
             )
+
+            result = self.execute_query(query, params, fetch=True)
+            if result:
+                return result[0]["id"]
             return None
 
-    # ============================================================================
-    # MÉTODOS DE CREACIÓN Y REGISTRO
-    # ============================================================================
-
-    def create(self, docente_data):
-        """
-        Crea un nuevo registro de docente en la base de datos.
-
-        Args:
-            docente_data (dict): Diccionario con los datos del docente.
-                Debe incluir al menos: nombre, apellido, email, identificacion.
-
-        Returns:
-            int or None: ID del docente creado si es exitoso, None si falla.
-
-        Raises:
-            ValueError: Si faltan datos requeridos.
-
-        Examples:
-            >>> nuevo_docente = {
-            >>>     'nombre': 'Juan',
-            >>>     'apellido': 'Pérez',
-            >>>     'email': 'juan.perez@ejemplo.com',
-            >>>     'identificacion': '12345678',
-            >>>     'especialidad': 'Matemáticas',
-            >>>     'telefono': '3001234567'
-            >>> }
-            >>> docente_id = docente_model.create(nuevo_docente)
-        """
-        try:
-            # Validar datos requeridos
-            campos_requeridos = ["nombre", "apellido", "email", "identificacion"]
-            for campo in campos_requeridos:
-                if campo not in docente_data or not docente_data[campo]:
-                    raise ValueError(f"Campo requerido faltante: {campo}")
-
-            # Verificar duplicados
-            if self.get_by_email(docente_data["email"]):
-                raise ValueError("Ya existe un docente con este email")
-
-            if self.get_by_identificacion(docente_data["identificacion"]):
-                raise ValueError("Ya existe un docente con esta identificación")
-
-            # Preparar datos con valores por defecto
-            datos_completos = self._preparar_datos_creacion(docente_data)
-
-            with self.engine.connect() as conn:
-                # Construir consulta de inserción
-                columnas = ", ".join(datos_completos.keys())
-                marcadores = ", ".join([f":{key}" for key in datos_completos.keys()])
-
-                query = text(
-                    f"""
-                    INSERT INTO {self.table_name} ({columnas})
-                    VALUES ({marcadores})
-                """
-                )
-
-                # Ejecutar inserción
-                result = conn.execute(query, datos_completos)
-                conn.commit()
-
-                docente_id = result.lastrowid
-
-                self._log_info(f"Docente creado exitosamente - ID: {docente_id}")
-                return docente_id
-
-        except ValueError as ve:
-            self._log_error(f"Error de validación al crear docente: {ve}")
-            raise
-        except Exception as error:
-            self._log_error(f"Error al crear docente: {error}")
+        except Exception as e:
+            print(f"Error creando docente: {e}")
             return None
 
-    # ============================================================================
-    # MÉTODOS DE ACTUALIZACIÓN
-    # ============================================================================
-
-    def update(self, docente_id, update_data):
+    def read(self, docente_id):
         """
-        Actualiza los datos de un docente existente.
-
+        Obtiene un docente por su ID
         Args:
-            docente_id (int): ID del docente a actualizar.
-            update_data (dict): Diccionario con los campos a actualizar.
-
+            docente_id: ID del docente
         Returns:
-            bool: True si la actualización fue exitosa, False en caso contrario.
-
-        Examples:
-            >>> datos_actualizacion = {
-            >>>     'telefono': '3109876543',
-            >>>     'especialidad': 'Física Avanzada'
-            >>> }
-            >>> exito = docente_model.update(1, datos_actualizacion)
+            Diccionario con los datos del docente o None si no existe
         """
         try:
-            # Verificar que el docente existe
-            docente = self.get_by_id(docente_id)
-            if not docente:
-                self._log_error(
-                    f"No se puede actualizar - Docente ID {docente_id} no encontrado"
-                )
-                return False
+            query = """
+            SELECT d.*, dep.nombre as departamento_nombre 
+            FROM docentes d 
+            LEFT JOIN departamentos dep ON d.departamento_id = dep.id 
+            WHERE d.id = %s
+            """
+            result = self.execute_query(query, (docente_id,))
+            return result[0] if result else None
+        except Exception as e:
+            print(f"Error leyendo docente: {e}")
+            return None
 
-            # Validar unicidad de email si se está actualizando
-            if "email" in update_data and update_data["email"] != docente["email"]:
-                if self.get_by_email(update_data["email"]):
-                    raise ValueError("Ya existe otro docente con este email")
-
-            # Validar unicidad de identificación si se está actualizando
-            if (
-                "identificacion" in update_data
-                and update_data["identificacion"] != docente["identificacion"]
-            ):
-                if self.get_by_identificacion(update_data["identificacion"]):
-                    raise ValueError("Ya existe otro docente con esta identificación")
-
-            # Preparar datos de actualización
-            datos_actualizados = self._preparar_datos_actualizacion(update_data)
-
-            if not datos_actualizados:
-                self._log_info("No hay datos válidos para actualizar")
-                return False
-
-            with self.engine.connect() as conn:
-                # Construir consulta de actualización
-                set_clause = ", ".join(
-                    [f"{key} = :{key}" for key in datos_actualizados.keys()]
-                )
-
-                query = text(
-                    f"""
-                    UPDATE {self.table_name}
-                    SET {set_clause}
-                    WHERE id = :docente_id
-                """
-                )
-
-                # Agregar ID a los parámetros
-                datos_actualizados["docente_id"] = docente_id
-
-                # Ejecutar actualización
-                result = conn.execute(query, datos_actualizados)
-                conn.commit()
-
-                actualizado = result.rowcount > 0
-
-                if actualizado:
-                    self._log_info(f"Docente ID {docente_id} actualizado exitosamente")
-                else:
-                    self._log_warning(f"No se actualizó el docente ID {docente_id}")
-
-                return actualizado
-
-        except ValueError as ve:
-            self._log_error(f"Error de validación al actualizar docente: {ve}")
-            return False
-        except Exception as error:
-            self._log_error(f"Error al actualizar docente ID {docente_id}: {error}")
+    def update(self, docente_id, data):
+        """
+        Actualiza un docente existente
+        Args:
+            docente_id: ID del docente a actualizar
+            data: Diccionario con los datos a actualizar
+        Returns:
+            True si se actualizó correctamente, False en caso contrario
+        """
+        if not data:
             return False
 
-    # ============================================================================
-    # MÉTODOS DE ELIMINACIÓN Y CAMBIO DE ESTADO
-    # ============================================================================
+        try:
+            # Construir la consulta dinámicamente
+            set_clauses = []
+            params = []
+
+            for key, value in data.items():
+                if key != "id":  # No actualizar el ID
+                    set_clauses.append(f"{key} = %s")
+                    params.append(value)
+
+            if not set_clauses:
+                return False
+
+            params.append(docente_id)
+            query = f"UPDATE docentes SET {', '.join(set_clauses)} WHERE id = %s"
+
+            self.execute_query(query, params, commit=True)
+            return True
+
+        except Exception as e:
+            print(f"Error actualizando docente: {e}")
+            return False
 
     def delete(self, docente_id):
         """
-        Elimina (desactiva) un docente del sistema.
-
-        Nota: En lugar de eliminación física, se cambia el estado a 'Inactivo'.
-
+        Elimina un docente (cambia estado a Inactivo)
         Args:
-            docente_id (int): ID del docente a desactivar.
-
+            docente_id: ID del docente
         Returns:
-            bool: True si la desactivación fue exitosa, False en caso contrario.
-
-        Examples:
-            >>> exito = docente_model.delete(1)
+            True si se eliminó correctamente, False en caso contrario
         """
         try:
-            return self.update(docente_id, {"estado": "Inactivo"})
-        except Exception as error:
-            self._log_error(f"Error al eliminar docente ID {docente_id}: {error}")
+            query = "UPDATE docentes SET estado = 'Inactivo' WHERE id = %s"
+            self.execute_query(query, (docente_id,), commit=True)
+            return True
+        except Exception as e:
+            print(f"Error eliminando docente: {e}")
             return False
 
-    def activar(self, docente_id):
+    # ============ MÉTODOS DE CONSULTA ESPECÍFICOS ============
+
+    def get_all(self, estado="Activo", limit=100, offset=0):
         """
-        Activa un docente previamente inactivo.
-
+        Obtiene todos los docentes con paginación
         Args:
-            docente_id (int): ID del docente a activar.
-
+            estado: Filtrar por estado (Activo/Inactivo/Todos)
+            limit: Límite de registros
+            offset: Desplazamiento para paginación
         Returns:
-            bool: True si la activación fue exitosa, False en caso contrario.
-
-        Examples:
-            >>> exito = docente_model.activar(1)
+            Lista de docentes
         """
         try:
-            return self.update(docente_id, {"estado": "Activo"})
-        except Exception as error:
-            self._log_error(f"Error al activar docente ID {docente_id}: {error}")
+            if estado == "Todos":
+                query = """
+                SELECT d.*, dep.nombre as departamento_nombre 
+                FROM docentes d 
+                LEFT JOIN departamentos dep ON d.departamento_id = dep.id 
+                ORDER BY d.id DESC 
+                LIMIT %s OFFSET %s
+                """
+                params = (limit, offset)
+            else:
+                query = """
+                SELECT d.*, dep.nombre as departamento_nombre 
+                FROM docentes d 
+                LEFT JOIN departamentos dep ON d.departamento_id = dep.id 
+                WHERE d.estado = %s 
+                ORDER BY d.id DESC 
+                LIMIT %s OFFSET %s
+                """
+                params = (estado, limit, offset)
+
+            return self.execute_query(query, params)
+        except Exception as e:
+            print(f"Error obteniendo todos los docentes: {e}")
+            return []
+
+    def search(self, search_term, estado="Activo"):
+        """
+        Busca docentes por término de búsqueda
+        Args:
+            search_term: Término a buscar (en ci, nombre, apellido, email, especialidad)
+            estado: Estado de los docentes a buscar
+        Returns:
+            Lista de docentes que coinciden con la búsqueda
+        """
+        try:
+            if estado == "Todos":
+                query = """
+                SELECT d.*, dep.nombre as departamento_nombre 
+                FROM docentes d 
+                LEFT JOIN departamentos dep ON d.departamento_id = dep.id 
+                WHERE d.ci ILIKE %s OR d.nombre ILIKE %s OR d.apellido ILIKE %s 
+                OR d.email ILIKE %s OR d.especialidad ILIKE %s 
+                ORDER BY d.id DESC
+                """
+                params = (
+                    f"%{search_term}%",
+                    f"%{search_term}%",
+                    f"%{search_term}%",
+                    f"%{search_term}%",
+                    f"%{search_term}%",
+                )
+            else:
+                query = """
+                SELECT d.*, dep.nombre as departamento_nombre 
+                FROM docentes d 
+                LEFT JOIN departamentos dep ON d.departamento_id = dep.id 
+                WHERE (d.ci ILIKE %s OR d.nombre ILIKE %s OR d.apellido ILIKE %s 
+                OR d.email ILIKE %s OR d.especialidad ILIKE %s) 
+                AND d.estado = %s 
+                ORDER BY d.id DESC
+                """
+                params = (
+                    f"%{search_term}%",
+                    f"%{search_term}%",
+                    f"%{search_term}%",
+                    f"%{search_term}%",
+                    f"%{search_term}%",
+                    estado,
+                )
+
+            return self.execute_query(query, params)
+        except Exception as e:
+            print(f"Error buscando docentes: {e}")
+            return []
+
+    # ============ MÉTODOS PARA DASHBOARD (IMPLEMENTADOS) ============
+
+    def get_total_docentes(self, estado="Activo"):
+        """
+        Obtiene el total de docentes registrados
+        Args:
+            estado: Filtrar por estado (Activo/Inactivo/Todos)
+        Returns:
+            Número total de docentes
+        """
+        try:
+            if estado == "Todos":
+                query = "SELECT COUNT(*) as total FROM docentes"
+                params = ()
+            else:
+                query = "SELECT COUNT(*) as total FROM docentes WHERE estado = %s"
+                params = (estado,)
+
+            result = self.execute_query(query, params)
+            return result[0]["total"] if result else 0
+        except Exception as e:
+            print(f"Error obteniendo total docentes: {e}")
+            return 0
+
+    def get_distribucion_genero(self, estado="Activo"):
+        """
+        Obtiene distribución de docentes por género
+        Args:
+            estado: Filtrar por estado
+        Returns:
+            Lista de diccionarios con género y cantidad
+        """
+        try:
+            if estado == "Todos":
+                query = """
+                SELECT 
+                    CASE 
+                        WHEN genero IS NULL OR genero = '' THEN 'No especificado'
+                        ELSE genero 
+                    END as genero,
+                    COUNT(*) as cantidad
+                FROM docentes
+                GROUP BY 
+                    CASE 
+                        WHEN genero IS NULL OR genero = '' THEN 'No especificado'
+                        ELSE genero 
+                    END
+                ORDER BY cantidad DESC
+                """
+                params = ()
+            else:
+                query = """
+                SELECT 
+                    CASE 
+                        WHEN genero IS NULL OR genero = '' THEN 'No especificado'
+                        ELSE genero 
+                    END as genero,
+                    COUNT(*) as cantidad
+                FROM docentes
+                WHERE estado = %s
+                GROUP BY 
+                    CASE 
+                        WHEN genero IS NULL OR genero = '' THEN 'No especificado'
+                        ELSE genero 
+                    END
+                ORDER BY cantidad DESC
+                """
+                params = (estado,)
+
+            return self.execute_query(query, params)
+        except Exception as e:
+            print(f"Error obteniendo distribución por género: {e}")
+            return []
+
+    def get_docentes_por_departamento(self, estado="Activo", limit=10):
+        """
+        Obtiene cantidad de docentes por departamento
+        Args:
+            estado: Filtrar por estado
+            limit: Límite de departamentos a mostrar
+        Returns:
+            Lista de diccionarios con departamento y cantidad
+        """
+        try:
+            if estado == "Todos":
+                query = """
+                SELECT 
+                    COALESCE(dep.nombre, 'Sin departamento') as departamento,
+                    COUNT(d.id) as cantidad
+                FROM docentes d
+                LEFT JOIN departamentos dep ON d.departamento_id = dep.id
+                GROUP BY dep.nombre
+                ORDER BY cantidad DESC
+                LIMIT %s
+                """
+                params = (limit,)
+            else:
+                query = """
+                SELECT 
+                    COALESCE(dep.nombre, 'Sin departamento') as departamento,
+                    COUNT(d.id) as cantidad
+                FROM docentes d
+                LEFT JOIN departamentos dep ON d.departamento_id = dep.id
+                WHERE d.estado = %s
+                GROUP BY dep.nombre
+                ORDER BY cantidad DESC
+                LIMIT %s
+                """
+                params = (estado, limit)
+
+            return self.execute_query(query, params)
+        except Exception as e:
+            print(f"Error obteniendo docentes por departamento: {e}")
+            return []
+
+    def get_docentes_por_titulo_academico(self, estado="Activo"):
+        """
+        Obtiene distribución de docentes por título académico
+        Args:
+            estado: Filtrar por estado
+        Returns:
+            Lista de diccionarios con título académico y cantidad
+        """
+        try:
+            if estado == "Todos":
+                query = """
+                SELECT 
+                    CASE 
+                        WHEN titulo_academico IS NULL OR titulo_academico = '' THEN 'No especificado'
+                        ELSE titulo_academico 
+                    END as titulo,
+                    COUNT(*) as cantidad
+                FROM docentes
+                GROUP BY 
+                    CASE 
+                        WHEN titulo_academico IS NULL OR titulo_academico = '' THEN 'No especificado'
+                        ELSE titulo_academico 
+                    END
+                ORDER BY cantidad DESC
+                """
+                params = ()
+            else:
+                query = """
+                SELECT 
+                    CASE 
+                        WHEN titulo_academico IS NULL OR titulo_academico = '' THEN 'No especificado'
+                        ELSE titulo_academico 
+                    END as titulo,
+                    COUNT(*) as cantidad
+                FROM docentes
+                WHERE estado = %s
+                GROUP BY 
+                    CASE 
+                        WHEN titulo_academico IS NULL OR titulo_academico = '' THEN 'No especificado'
+                        ELSE titulo_academico 
+                    END
+                ORDER BY cantidad DESC
+                """
+                params = (estado,)
+
+            return self.execute_query(query, params)
+        except Exception as e:
+            print(f"Error obteniendo docentes por título académico: {e}")
+            return []
+
+    def get_docentes_por_rango_experiencia(self, estado="Activo"):
+        """
+        Obtiene distribución de docentes por rango de experiencia (basado en fecha_ingreso)
+        Args:
+            estado: Filtrar por estado
+        Returns:
+            Lista de diccionarios con rango de experiencia y cantidad
+        """
+        try:
+            if estado == "Todos":
+                query = """
+                SELECT 
+                    CASE 
+                        WHEN fecha_ingreso IS NULL THEN 'Sin fecha de ingreso'
+                        WHEN EXTRACT(YEAR FROM AGE(fecha_ingreso)) < 1 THEN 'Menos de 1 año'
+                        WHEN EXTRACT(YEAR FROM AGE(fecha_ingreso)) BETWEEN 1 AND 5 THEN '1-5 años'
+                        WHEN EXTRACT(YEAR FROM AGE(fecha_ingreso)) BETWEEN 6 AND 10 THEN '6-10 años'
+                        WHEN EXTRACT(YEAR FROM AGE(fecha_ingreso)) BETWEEN 11 AND 20 THEN '11-20 años'
+                        ELSE 'Más de 20 años'
+                    END as rango_experiencia,
+                    COUNT(*) as cantidad
+                FROM docentes
+                GROUP BY 
+                    CASE 
+                        WHEN fecha_ingreso IS NULL THEN 'Sin fecha de ingreso'
+                        WHEN EXTRACT(YEAR FROM AGE(fecha_ingreso)) < 1 THEN 'Menos de 1 año'
+                        WHEN EXTRACT(YEAR FROM AGE(fecha_ingreso)) BETWEEN 1 AND 5 THEN '1-5 años'
+                        WHEN EXTRACT(YEAR FROM AGE(fecha_ingreso)) BETWEEN 6 AND 10 THEN '6-10 años'
+                        WHEN EXTRACT(YEAR FROM AGE(fecha_ingreso)) BETWEEN 11 AND 20 THEN '11-20 años'
+                        ELSE 'Más de 20 años'
+                    END
+                ORDER BY cantidad DESC
+                """
+                params = ()
+            else:
+                query = """
+                SELECT 
+                    CASE 
+                        WHEN fecha_ingreso IS NULL THEN 'Sin fecha de ingreso'
+                        WHEN EXTRACT(YEAR FROM AGE(fecha_ingreso)) < 1 THEN 'Menos de 1 año'
+                        WHEN EXTRACT(YEAR FROM AGE(fecha_ingreso)) BETWEEN 1 AND 5 THEN '1-5 años'
+                        WHEN EXTRACT(YEAR FROM AGE(fecha_ingreso)) BETWEEN 6 AND 10 THEN '6-10 años'
+                        WHEN EXTRACT(YEAR FROM AGE(fecha_ingreso)) BETWEEN 11 AND 20 THEN '11-20 años'
+                        ELSE 'Más de 20 años'
+                    END as rango_experiencia,
+                    COUNT(*) as cantidad
+                FROM docentes
+                WHERE estado = %s
+                GROUP BY 
+                    CASE 
+                        WHEN fecha_ingreso IS NULL THEN 'Sin fecha de ingreso'
+                        WHEN EXTRACT(YEAR FROM AGE(fecha_ingreso)) < 1 THEN 'Menos de 1 año'
+                        WHEN EXTRACT(YEAR FROM AGE(fecha_ingreso)) BETWEEN 1 AND 5 THEN '1-5 años'
+                        WHEN EXTRACT(YEAR FROM AGE(fecha_ingreso)) BETWEEN 6 AND 10 THEN '6-10 años'
+                        WHEN EXTRACT(YEAR FROM AGE(fecha_ingreso)) BETWEEN 11 AND 20 THEN '11-20 años'
+                        ELSE 'Más de 20 años'
+                    END
+                ORDER BY cantidad DESC
+                """
+                params = (estado,)
+
+            return self.execute_query(query, params)
+        except Exception as e:
+            print(f"Error obteniendo docentes por rango de experiencia: {e}")
+            return []
+
+    def get_estadisticas_mensuales(self, año=None, estado="Activo"):
+        """
+        Obtiene estadísticas mensuales de registros de docentes
+        Args:
+            año: Año a consultar (None para año actual)
+            estado: Filtrar por estado
+        Returns:
+            Lista de diccionarios con mes y cantidad de registros
+        """
+        try:
+            if año is None:
+                año = datetime.now().year
+
+            if estado == "Todos":
+                query = """
+                SELECT 
+                    EXTRACT(MONTH FROM fecha_registro) as mes,
+                    COUNT(*) as cantidad
+                FROM docentes
+                WHERE EXTRACT(YEAR FROM fecha_registro) = %s
+                GROUP BY EXTRACT(MONTH FROM fecha_registro)
+                ORDER BY mes
+                """
+                params = (año,)
+            else:
+                query = """
+                SELECT 
+                    EXTRACT(MONTH FROM fecha_registro) as mes,
+                    COUNT(*) as cantidad
+                FROM docentes
+                WHERE EXTRACT(YEAR FROM fecha_registro) = %s AND estado = %s
+                GROUP BY EXTRACT(MONTH FROM fecha_registro)
+                ORDER BY mes
+                """
+                params = (año, estado)
+
+            return self.execute_query(query, params)
+        except Exception as e:
+            print(f"Error obteniendo estadísticas mensuales: {e}")
+            return []
+
+    # ============ MÉTODOS DE VALIDACIÓN ============
+
+    def ci_exists(self, ci, exclude_id=None):
+        """
+        Verifica si un CI ya existe en la base de datos
+        Args:
+            ci: CI a verificar
+            exclude_id: ID a excluir (para actualizaciones)
+        Returns:
+            True si existe, False en caso contrario
+        """
+        try:
+            if exclude_id:
+                query = (
+                    "SELECT COUNT(*) as count FROM docentes WHERE ci = %s AND id != %s"
+                )
+                params = (ci, exclude_id)
+            else:
+                query = "SELECT COUNT(*) as count FROM docentes WHERE ci = %s"
+                params = (ci,)
+
+            result = self.execute_query(query, params)
+            return result[0]["count"] > 0 if result else False
+        except Exception as e:
+            print(f"Error verificando CI: {e}")
             return False
 
-    # ============================================================================
-    # MÉTODOS DE BÚSQUEDA Y FILTRADO
-    # ============================================================================
-
-    def search(self, criterio, valor, solo_activos=False):
+    def email_exists(self, email, exclude_id=None):
         """
-        Busca docentes según diferentes criterios.
-
+        Verifica si un email ya existe en la base de datos
         Args:
-            criterio (str): Criterio de búsqueda. Puede ser:
-                - 'nombre': Busca por nombre o apellido
-                - 'especialidad': Busca por especialidad
-                - 'email': Busca por email
-                - 'identificacion': Busca por identificación
-                - 'telefono': Busca por teléfono
-                - 'todos': Búsqueda general en varios campos
-            valor (str): Valor a buscar.
-            solo_activos (bool, optional): Filtrar solo docentes activos.
-
+            email: Email a verificar
+            exclude_id: ID a excluir (para actualizaciones)
         Returns:
-            list: Lista de docentes que coinciden con la búsqueda.
-
-        Examples:
-            >>> # Buscar por nombre
-            >>> resultados = docente_model.search('nombre', 'Juan')
-            >>>
-            >>> # Buscar por especialidad
-            >>> resultados = docente_model.search('especialidad', 'Matemáticas')
-            >>>
-            >>> # Búsqueda general
-            >>> resultados = docente_model.search('todos', 'física')
+            True si existe, False en caso contrario
         """
         try:
-            with self.engine.connect() as conn:
-                # Construir WHERE clause según criterio
-                where_clause = self._construir_where_busqueda(criterio, valor)
+            if exclude_id:
+                query = "SELECT COUNT(*) as count FROM docentes WHERE email = %s AND id != %s"
+                params = (email, exclude_id)
+            else:
+                query = "SELECT COUNT(*) as count FROM docentes WHERE email = %s"
+                params = (email,)
 
-                # Agregar filtro de estado si es necesario
-                if solo_activos:
-                    if "WHERE" in where_clause:
-                        where_clause += " AND estado = 'Activo'"
-                    else:
-                        where_clause = "WHERE estado = 'Activo'"
+            result = self.execute_query(query, params)
+            return result[0]["count"] > 0 if result else False
+        except Exception as e:
+            print(f"Error verificando email: {e}")
+            return False
 
-                query = text(
-                    f"""
-                    SELECT * FROM {self.table_name}
-                    {where_clause}
-                    ORDER BY apellido, nombre
-                """
-                )
+    # ============ MÉTODOS DE COMPATIBILIDAD ============
 
-                # Preparar parámetros
-                if criterio in [
-                    "nombre",
-                    "especialidad",
-                    "email",
-                    "identificacion",
-                    "telefono",
-                ]:
-                    params = {"valor": f"%{valor}%"}
-                else:
-                    params = {}
+    def obtener_todos(self):
+        """Método de compatibilidad con nombres antiguos"""
+        return self.get_all()
 
-                # Ejecutar consulta
-                result = conn.execute(query, params)
-                docentes = result.fetchall()
+    def obtener_por_id(self, docente_id):
+        """Método de compatibilidad con nombres antiguos"""
+        return self.read(docente_id)
 
-                return [dict(docente) for docente in docentes]
-
-        except Exception as error:
-            self._log_error(
-                f"Error en búsqueda de docentes (criterio: {criterio}, valor: {valor}): {error}"
-            )
-            return []
-
-    def search_by_especialidad(self, especialidad, solo_activos=False):
-        """
-        Busca docentes por especialidad específica.
-
-        Args:
-            especialidad (str): Especialidad a buscar.
-            solo_activos (bool, optional): Filtrar solo docentes activos.
-
-        Returns:
-            list: Docentes con la especialidad especificada.
-
-        Examples:
-            >>> matematicos = docente_model.search_by_especialidad('Matemáticas')
-        """
-        try:
-            with self.engine.connect() as conn:
-                query = f"""
-                    SELECT * FROM {self.table_name}
-                    WHERE especialidad LIKE :especialidad
-                """
-
-                if solo_activos:
-                    query += " AND estado = 'Activo'"
-
-                query += " ORDER BY apellido, nombre"
-
-                result = conn.execute(
-                    text(query), {"especialidad": f"%{especialidad}%"}
-                )
-                docentes = result.fetchall()
-
-                return [dict(docente) for docente in docentes]
-
-        except Exception as error:
-            self._log_error(
-                f"Error al buscar docentes por especialidad '{especialidad}': {error}"
-            )
-            return []
-
-    # ============================================================================
-    # MÉTODOS DE CONSULTA ESPECIALIZADA
-    # ============================================================================
-
-    def get_docentes_con_cursos(self, solo_activos=True):
-        """
-        Obtiene docentes con información de los cursos que imparten.
-
-        Args:
-            solo_activos (bool, optional): Filtrar solo docentes activos.
-
-        Returns:
-            list: Docentes con datos de sus cursos.
-
-        Examples:
-            >>> docentes_con_cursos = docente_model.get_docentes_con_cursos()
-        """
-        try:
-            with self.engine.connect() as conn:
-                # Consulta que obtiene docentes con información de cursos
-                query = text(
-                    """
-                    SELECT 
-                        d.*,
-                        COUNT(c.id) as total_cursos,
-                        GROUP_CONCAT(c.nombre, ', ') as cursos_nombres,
-                        SUM(CASE WHEN c.estado = 'Activo' THEN 1 ELSE 0 END) as cursos_activos
-                    FROM docentes d
-                    LEFT JOIN cursos c ON d.id = c.docente_id
-                    WHERE 1=1
-                """
-                )
-
-                if solo_activos:
-                    query = text(str(query) + " AND d.estado = 'Activo'")
-
-                query = text(
-                    str(query)
-                    + """
-                    GROUP BY d.id
-                    ORDER BY d.apellido, d.nombre
-                """
-                )
-
-                result = conn.execute(query)
-                docentes = result.fetchall()
-
-                return [dict(docente) for docente in docentes]
-
-        except Exception as error:
-            self._log_error(f"Error al obtener docentes con cursos: {error}")
-            return []
-
-    def get_docentes_disponibles(self):
-        """
-        Obtiene docentes disponibles (activos) sin sobrecarga de cursos.
-
-        Returns:
-            list: Docentes disponibles para asignar nuevos cursos.
-
-        Examples:
-            >>> docentes_disponibles = docente_model.get_docentes_disponibles()
-        """
-        try:
-            with self.engine.connect() as conn:
-                # Consulta que obtiene docentes con carga de trabajo
-                query = text(
-                    """
-                    SELECT 
-                        d.*,
-                        COUNT(c.id) as cursos_asignados
-                    FROM docentes d
-                    LEFT JOIN cursos c ON d.id = c.docente_id AND c.estado = 'Activo'
-                    WHERE d.estado = 'Activo'
-                    GROUP BY d.id
-                    HAVING cursos_asignados < 5  -- Límite de cursos por docente
-                    ORDER BY cursos_asignados ASC, d.apellido, d.nombre
-                """
-                )
-
-                result = conn.execute(query)
-                docentes = result.fetchall()
-
-                return [dict(docente) for docente in docentes]
-
-        except Exception as error:
-            self._log_error(f"Error al obtener docentes disponibles: {error}")
-            return []
-
-    def get_estadisticas(self):
-        """
-        Obtiene estadísticas generales de los docentes.
-
-        Returns:
-            dict: Diccionario con estadísticas de docentes.
-
-        Examples:
-            >>> estadisticas = docente_model.get_estadisticas()
-            >>> print(f"Total docentes: {estadisticas['total']}")
-            >>> print(f"Docentes activos: {estadisticas['activos']}")
-        """
-        try:
-            with self.engine.connect() as conn:
-                query = text(
-                    f"""
-                    SELECT 
-                        COUNT(*) as total,
-                        SUM(CASE WHEN estado = 'Activo' THEN 1 ELSE 0 END) as activos,
-                        SUM(CASE WHEN estado = 'Inactivo' THEN 1 ELSE 0 END) as inactivos,
-                        COUNT(DISTINCT especialidad) as especialidades_distintas
-                    FROM {self.table_name}
-                """
-                )
-
-                result = conn.execute(query)
-                row = result.fetchone()
-
-                if row:
-                    return {
-                        "total": row[0],
-                        "activos": row[1],
-                        "inactivos": row[2],
-                        "especialidades_distintas": row[3],
-                    }
-                else:
-                    return {
-                        "total": 0,
-                        "activos": 0,
-                        "inactivos": 0,
-                        "especialidades_distintas": 0,
-                    }
-
-        except Exception as error:
-            self._log_error(f"Error al obtener estadísticas de docentes: {error}")
-            return {
-                "total": 0,
-                "activos": 0,
-                "inactivos": 0,
-                "especialidades_distintas": 0,
-            }
-
-    # ============================================================================
-    # MÉTODOS AUXILIARES PRIVADOS
-    # ============================================================================
-
-    def _preparar_datos_creacion(self, datos):
-        """
-        Prepara los datos para la creación de un nuevo docente.
-
-        Args:
-            datos (dict): Datos crudos del docente.
-
-        Returns:
-            dict: Datos preparados con valores por defecto.
-        """
-        datos_preparados = datos.copy()
-
-        # Establecer valores por defecto si no están presentes
-        defaults = {
-            "estado": "Activo",
-            "created_at": datetime.now(),
-            "updated_at": datetime.now(),
-        }
-
-        for key, value in defaults.items():
-            if key not in datos_preparados or not datos_preparados[key]:
-                datos_preparados[key] = value
-
-        return datos_preparados
-
-    def _preparar_datos_actualizacion(self, datos):
-        """
-        Prepara los datos para la actualización de un docente.
-
-        Args:
-            datos (dict): Datos a actualizar.
-
-        Returns:
-            dict: Datos preparados para actualización.
-        """
-        # Filtrar campos que no deben actualizarse directamente
-        campos_excluidos = ["id", "created_at"]
-        datos_preparados = {
-            key: value
-            for key, value in datos.items()
-            if key not in campos_excluidos and value is not None
-        }
-
-        # Siempre actualizar el timestamp
-        datos_preparados["updated_at"] = datetime.now()
-
-        return datos_preparados
-
-    def _construir_where_busqueda(self, criterio, valor):
-        """
-        Construye la cláusula WHERE para búsquedas.
-
-        Args:
-            criterio (str): Tipo de búsqueda.
-            valor (str): Valor a buscar.
-
-        Returns:
-            str: Cláusula WHERE SQL.
-        """
-        if not valor:
-            return ""
-
-        criterios = {
-            "nombre": f"WHERE nombre LIKE '%{valor}%' OR apellido LIKE '%{valor}%'",
-            "especialidad": f"WHERE especialidad LIKE '%{valor}%'",
-            "email": f"WHERE email LIKE '%{valor}%'",
-            "identificacion": f"WHERE identificacion LIKE '%{valor}%'",
-            "telefono": f"WHERE telefono LIKE '%{valor}%'",
-            "todos": f"""
-                WHERE nombre LIKE '%{valor}%' 
-                OR apellido LIKE '%{valor}%'
-                OR email LIKE '%{valor}%'
-                OR identificacion LIKE '%{valor}%'
-                OR especialidad LIKE '%{valor}%'
-                OR telefono LIKE '%{valor}%'
-            """,
-        }
-
-        return criterios.get(
-            criterio, f"WHERE nombre LIKE '%{valor}%' OR apellido LIKE '%{valor}%'"
-        )
-
-    def _log_info(self, mensaje):
-        """
-        Registra mensajes informativos.
-
-        Args:
-            mensaje (str): Mensaje a registrar.
-        """
-        print(f"📝 [DocenteModel] INFO: {mensaje}")
-
-    def _log_error(self, mensaje):
-        """
-        Registra mensajes de error.
-
-        Args:
-            mensaje (str): Mensaje de error a registrar.
-        """
-        print(f"❌ [DocenteModel] ERROR: {mensaje}")
-
-    def _log_warning(self, mensaje):
-        """
-        Registra mensajes de advertencia.
-
-        Args:
-            mensaje (str): Mensaje de advertencia a registrar.
-        """
-        print(f"⚠️ [DocenteModel] WARNING: {mensaje}")
+    def buscar_docentes(self, termino):
+        """Método de compatibilidad con nombres antiguos"""
+        return self.search(termino)

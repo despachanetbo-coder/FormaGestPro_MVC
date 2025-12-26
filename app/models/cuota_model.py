@@ -83,6 +83,9 @@ class CuotaModel(BaseModel):
             else:
                 fecha_venc = self.fecha_vencimiento
 
+            if fecha_venc is None:
+                return False
+
             hoy = date.today()
             return hoy > fecha_venc
         except:
@@ -98,6 +101,9 @@ class CuotaModel(BaseModel):
                 ).date()
             else:
                 fecha_venc = self.fecha_vencimiento
+
+            if fecha_venc is None:
+                return None
 
             hoy = date.today()
             dias = (fecha_venc - hoy).days
@@ -130,6 +136,16 @@ class CuotaModel(BaseModel):
         return [cls(**row) for row in rows]
 
     @classmethod
+    def buscar_por_estado(cls, estado: str) -> List["CuotaModel"]:
+        """Busca cuotas por estado sin filtrar por matrícula"""
+        from database.database import db
+
+        query = f"SELECT * FROM {cls.TABLE_NAME} WHERE estado = ? ORDER BY fecha_vencimiento"
+        rows = db.fetch_all(query, (estado,))
+
+        return [cls(**row) for row in rows]
+
+    @classmethod
     def buscar_vencidas(cls) -> List["CuotaModel"]:
         """Busca cuotas vencidas"""
         from database.database import db
@@ -144,7 +160,7 @@ class CuotaModel(BaseModel):
 
         return [cls(**row) for row in rows]
 
-    def marcar_como_pagada(self, pago_id: int, fecha_pago: date = None):
+    def marcar_como_pagada(self, pago_id: int, fecha_pago: Optional[date] = None):
         """Marca la cuota como pagada"""
         self.estado = "PAGADA"
         self.pago_id = pago_id
@@ -162,7 +178,7 @@ class CuotaModel(BaseModel):
     @classmethod
     def actualizar_vencimientos(cls):
         """Actualiza el estado de cuotas vencidas"""
-        cuotas_pendientes = cls.buscar_por_matricula_y_estado(None, "PENDIENTE")
+        cuotas_pendientes = cls.buscar_por_estado("PENDIENTE")
 
         for cuota in cuotas_pendientes:
             if cuota.esta_vencida:

@@ -1,475 +1,304 @@
-# app/models/base_model.py
-"""
-Base Model optimizado para PostgreSQL - FormaGestPro
-Reemplaza SQLite por PostgreSQL manteniendo compatibilidad con código existente.
-"""
+# app/models/base_model.py - Versión completa con execute_query
+import sys
+import os
 
-import logging
-import json
-from typing import Optional, Dict, List, Any, Tuple
-from datetime import datetime
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from app.database.connection import db  # Conexión PostgreSQL centralizada
-
-logger = logging.getLogger(__name__)
+from database.connection import get_connection
 
 
 class BaseModel:
-    """Clase base para todos los modelos usando PostgreSQL
+    def __init__(self):
+        """Inicializa el modelo base con conexión a la base de datos"""
+        self.connection = get_connection()
+        self.cursor = None
 
-    Mantiene compatibilidad con métodos existentes mientras migra de SQLite a PostgreSQL.
-    """
+    def __del__(self):
+        """Limpia recursos al destruir el objeto"""
+        self.close_cursor()
 
-    TABLE_NAME = ""  # Debe ser sobrescrito por cada modelo
+    def close_cursor(self):
+        """Cierra el cursor si está abierto"""
+        if self.cursor:
+            self.cursor.close()
+            self.cursor = None
 
-    def __init__(self, **kwargs):
-        # Campos base de auditoría
-        self.id = kwargs.get("id")
+    def get_cursor(self):
+        """Obtiene un cursor nuevo si no existe uno activo"""
+        if self.cursor is None or self.cursor.closed:
+            self.cursor = self.connection.cursor()
+        return self.cursor
 
-        # Manejo flexible de fechas (ISO 8601 o timestamp string)
-        created_at = kwargs.get("created_at")
-        if isinstance(created_at, str):
-            self.created_at = created_at
-        else:
-            self.created_at = created_at or datetime.now().isoformat()
-
-        updated_at = kwargs.get("updated_at")
-        if isinstance(updated_at, str):
-            self.updated_at = updated_at
-        else:
-            self.updated_at = updated_at or datetime.now().isoformat()
-
-        # Para compatibilidad con código existente
-        self._fields = {}  # Diccionario interno para almacenar datos
-
-    # ============================================================================
-    # MÉTODOS CRUD PRINCIPALES (COMPATIBLES CON CÓDIGO EXISTENTE)
-    # ============================================================================
-
-    def save(self) -> Optional[int]:
+    def execute_query(self, query, params=None, fetch=True, commit=False):
         """
-        Guarda el objeto en la base de datos.
-        Si tiene id, actualiza; si no, inserta.
+        Ejecuta una consulta SQL de forma segura
+
+        Args:
+            query (str): Consulta SQL a ejecutar
+            params (tuple/list/dict): Parámetros para la consulta
+            fetch (bool): Si es True, retorna resultados (para SELECT)
+            commit (bool): Si es True, hace commit de la transacción
 
         Returns:
-            int: ID del registro guardado, None en caso de error
+            - Para SELECT con fetch=True: Lista de diccionarios con resultados
+            - Para SELECT con fetch=False: Cursor para procesamiento manual
+            - Para INSERT/UPDATE/DELETE: Número de filas afectadas o ID si hay RETURNING
+            - None en caso de error
         """
+        cursor = None
         try:
-            if self.id:
-                return self._update()
+            # Obtener cursor
+            cursor = self.get_cursor()
+
+            # Ejecutar consulta
+            if params:
+                cursor.execute(query, params)
             else:
-                return self._insert()
+                cursor.execute(query)
+
+            # Commit si es necesario
+            if commit:
+                self.connection.commit()
+
+            # Procesar resultados según el tipo de consulta
+            if fetch and cursor.description:  # Es un SELECT que retorna datos
+                # Obtener nombres de columnas
+                columns = [desc[0] for desc in cursor.description]
+
+                # Convertir resultados a lista de diccionarios
+                results = cursor.fetchall()
+                return [dict(zip(columns, row)) for row in results]
+
+            elif (
+                fetch and not cursor.description
+            ):  # Es un SELECT que no retorna datos o es otra operación
+                # Intentar obtener resultado si hay RETURNING
+                try:
+                    result = cursor.fetchone()
+                    if result:
+                        return result[0] if len(result) == 1 else result
+                except:
+                    pass
+
+                # Retornar número de filas afectadas
+                return cursor.rowcount
+
+            else:  # No fetch, retornar cursor para procesamiento manual
+                return cursor
+
         except Exception as e:
-            logger.error(f"❌ Error guardando {self.__class__.__name__}: {e}")
+            print(f"Error ejecutando consulta: {e}")
+            print(f"Consulta: {query}")
+            print(f"Parámetros: {params}")
+
+            # Rollback en caso de error
+            if commit:
+                try:
+                    self.connection.rollback()
+                except:
+                    pass
+
             return None
 
-    def _insert(self) -> int:
-        """Insertar nuevo registro en PostgreSQL"""
-        data = self._prepare_insert_data()
+        finally:
+            # No cerrar cursor aquí si no se solicitó fetch, para permitir procesamiento posterior
+            if fetch and cursor:
+                cursor.close()
+                self.cursor = None
 
-        if not data:
-            logger.warning(f"⚠️ No hay datos para insertar en {self.__class__.__name__}")
-            return None
-
-        columns = ", ".join(data.keys())
-        placeholders = ", ".join(["%s"] * len(data))
-
-        # PostgreSQL usa RETURNING id
-        query = f"INSERT INTO {self.TABLE_NAME} ({columns}) VALUES ({placeholders}) RETURNING id"
-
-        try:
-            result = db.execute_query(query, tuple(data.values()), fetch=True)
-            if result and len(result) > 0:
-                self.id = result[0]["id"]
-                logger.info(f"✅ {self.__class__.__name__} creado con ID: {self.id}")
-                return self.id
-        except Exception as e:
-            logger.error(f"❌ Error en _insert para {self.__class__.__name__}: {e}")
-            raise
-
-        return None
-
-    def _update(self) -> int:
-        """Actualizar registro existente en PostgreSQL"""
-        data = self._prepare_update_data()
-
-        if not data:
-            logger.debug(
-                f"ℹ️ Sin cambios para actualizar en {self.__class__.__name__} ID: {self.id}"
-            )
-            return self.id
-
-        set_clause = ", ".join([f"{k} = %s" for k in data.keys()])
-        query = f"UPDATE {self.TABLE_NAME} SET {set_clause} WHERE id = %s"
-        params = tuple(data.values()) + (self.id,)
-
-        try:
-            db.execute_query(query, params, fetch=False)
-            logger.info(f"✏️ {self.__class__.__name__} actualizado con ID: {self.id}")
-            return self.id
-        except Exception as e:
-            logger.error(f"❌ Error en _update para {self.__class__.__name__}: {e}")
-            raise
-
-    def delete(self) -> bool:
+    def fetch_one(self, query, params=None):
         """
-        Elimina el registro de la base de datos.
-
-        Returns:
-            bool: True si se eliminó correctamente, False en caso contrario
-        """
-        if not self.id:
-            logger.warning(f"⚠️ {self.__class__.__name__} no tiene ID para eliminar")
-            return False
-
-        query = f"DELETE FROM {self.TABLE_NAME} WHERE id = %s"
-        try:
-            db.execute_query(query, (self.id,), fetch=False)
-            logger.info(f"🗑️ {self.__class__.__name__} eliminado con ID: {self.id}")
-            return True
-        except Exception as e:
-            logger.error(f"❌ Error eliminando {self.__class__.__name__}: {e}")
-            return False
-
-    # ============================================================================
-    # MÉTODOS QUE DEBEN SER IMPLEMENTADOS POR MODELOS HIJO
-    # ============================================================================
-
-    def _prepare_insert_data(self) -> Dict:
-        """
-        Preparar datos para inserción.
-
-        Returns:
-            Dict: Diccionario con columnas y valores para INSERT
-        """
-        # Método base que puede ser usado por modelos simples
-        data = {}
-        for key, value in self.__dict__.items():
-            if not key.startswith("_") and key not in [
-                "id",
-                "created_at",
-                "updated_at",
-            ]:
-                if value is not None:
-                    data[key] = value
-
-        # Agregar timestamps si no están en el modelo
-        if "created_at" not in data and hasattr(self, "created_at"):
-            data["created_at"] = self.created_at
-        if "updated_at" not in data and hasattr(self, "updated_at"):
-            data["updated_at"] = self.updated_at
-
-        return data
-
-    def _prepare_update_data(self) -> Dict:
-        """
-        Preparar datos para actualización.
-
-        Returns:
-            Dict: Diccionario con columnas y valores para UPDATE
-        """
-        data = {}
-        for key, value in self.__dict__.items():
-            if not key.startswith("_") and key not in ["id", "created_at"]:
-                if value is not None:
-                    data[key] = value
-
-        # Siempre actualizar updated_at
-        data["updated_at"] = datetime.now().isoformat()
-
-        return data
-
-    # ============================================================================
-    # MÉTODOS DE CONSULTA ESTÁTICOS (COMPATIBLES)
-    # ============================================================================
-
-    @classmethod
-    def find_by_id(cls, id: int) -> Optional["BaseModel"]:
-        """
-        Busca un registro por su ID.
-
-        Args:
-            id (int): ID del registro a buscar
-
-        Returns:
-            BaseModel: Instancia del modelo o None si no se encuentra
-        """
-        query = f"SELECT * FROM {cls.TABLE_NAME} WHERE id = %s"
-        result = db.fetch_one(query, (id,))
-        return cls(**result) if result else None
-
-    @classmethod
-    def find_all(cls, limit: int = 100, offset: int = 0) -> List["BaseModel"]:
-        """
-        Obtiene todos los registros con paginación.
-
-        Args:
-            limit (int): Límite de registros
-            offset (int): Desplazamiento para paginación
-
-        Returns:
-            List[BaseModel]: Lista de instancias del modelo
-        """
-        query = f"SELECT * FROM {cls.TABLE_NAME} ORDER BY id DESC LIMIT %s OFFSET %s"
-        results = db.fetch_all(query, (limit, offset))
-        return [cls(**row) for row in results]
-
-    @classmethod
-    def count(cls) -> int:
-        """
-        Cuenta el total de registros en la tabla.
-
-        Returns:
-            int: Número total de registros
-        """
-        query = f"SELECT COUNT(*) as total FROM {cls.TABLE_NAME}"
-        result = db.fetch_one(query)
-        return result["total"] if result else 0
-
-    @classmethod
-    def find_by_field(
-        cls, field: str, value: Any, limit: int = 100
-    ) -> List["BaseModel"]:
-        """
-        Busca registros por un campo específico.
-
-        Args:
-            field (str): Nombre del campo
-            value (Any): Valor a buscar
-            limit (int): Límite de resultados
-
-        Returns:
-            List[BaseModel]: Lista de instancias encontradas
-        """
-        query = f"SELECT * FROM {cls.TABLE_NAME} WHERE {field} = %s LIMIT %s"
-        results = db.fetch_all(query, (value, limit))
-        return [cls(**row) for row in results]
-
-    @classmethod
-    def search(
-        cls, field: str, search_term: str, limit: int = 100
-    ) -> List["BaseModel"]:
-        """
-        Búsqueda parcial (LIKE) en un campo.
-
-        Args:
-            field (str): Campo donde buscar
-            search_term (str): Término de búsqueda
-            limit (int): Límite de resultados
-
-        Returns:
-            List[BaseModel]: Lista de instancias encontradas
-        """
-        query = f"SELECT * FROM {cls.TABLE_NAME} WHERE {field} ILIKE %s LIMIT %s"
-        results = db.fetch_all(query, (f"%{search_term}%", limit))
-        return [cls(**row) for row in results]
-
-    # ============================================================================
-    # MÉTODOS DE UTILIDAD (COMPATIBLES)
-    # ============================================================================
-
-    def to_dict(self) -> Dict:
-        """
-        Convierte el modelo a diccionario.
-
-        Returns:
-            Dict: Diccionario con todos los atributos del modelo
-        """
-        result = {}
-        for key, value in self.__dict__.items():
-            if not key.startswith("_"):
-                # Convertir objetos datetime a string para JSON
-                if isinstance(value, datetime):
-                    result[key] = value.isoformat()
-                else:
-                    result[key] = value
-        return result
-
-    def to_json(self) -> str:
-        """
-        Convierte el modelo a JSON.
-
-        Returns:
-            str: Representación JSON del modelo
-        """
-        return json.dumps(self.to_dict(), default=str, ensure_ascii=False)
-
-    @classmethod
-    def from_dict(cls, data: Dict) -> "BaseModel":
-        """
-        Crea una instancia del modelo desde un diccionario.
-
-        Args:
-            data (Dict): Diccionario con datos del modelo
-
-        Returns:
-            BaseModel: Instancia del modelo
-        """
-        return cls(**data)
-
-    @classmethod
-    def from_json(cls, json_str: str) -> "BaseModel":
-        """
-        Crea una instancia del modelo desde JSON.
-
-        Args:
-            json_str (str): String JSON con datos del modelo
-
-        Returns:
-            BaseModel: Instancia del modelo
-        """
-        data = json.loads(json_str)
-        return cls(**data)
-
-    def exists(self) -> bool:
-        """
-        Verifica si el registro existe en la base de datos.
-
-        Returns:
-            bool: True si existe, False en caso contrario
-        """
-        if not self.id:
-            return False
-
-        query = f"SELECT EXISTS(SELECT 1 FROM {self.TABLE_NAME} WHERE id = %s)"
-        result = db.fetch_one(query, (self.id,))
-        return result["exists"] if result else False
-
-    def refresh(self) -> bool:
-        """
-        Actualiza la instancia con los datos actuales de la base de datos.
-
-        Returns:
-            bool: True si se pudo actualizar, False en caso contrario
-        """
-        if not self.id:
-            return False
-
-        query = f"SELECT * FROM {self.TABLE_NAME} WHERE id = %s"
-        result = db.fetch_one(query, (self.id,))
-
-        if result:
-            for key, value in result.items():
-                setattr(self, key, value)
-            return True
-
-        return False
-
-    # ============================================================================
-    # MÉTODOS ESPECIALES
-    # ============================================================================
-
-    def __str__(self) -> str:
-        """Representación en string legible del modelo."""
-        return f"{self.__class__.__name__} (ID: {self.id})"
-
-    def __repr__(self) -> str:
-        """Representación oficial del modelo."""
-        return f"<{self.__class__.__name__} id={self.id}>"
-
-    def __eq__(self, other) -> bool:
-        """Compara dos modelos por ID."""
-        if not isinstance(other, self.__class__):
-            return False
-        return self.id == other.id
-
-    def __hash__(self) -> int:
-        """Hash del modelo basado en ID."""
-        return hash((self.__class__.__name__, self.id))
-
-    # ============================================================================
-    # MÉTODOS PARA MIGRACIÓN DE SQLite (COMPATIBILIDAD)
-    # ============================================================================
-
-    @classmethod
-    def execute_raw_query(cls, query: str, params: Tuple = None) -> List[Dict]:
-        """
-        Ejecuta una consulta SQL cruda (para migración o consultas complejas).
+        Ejecuta una consulta y retorna solo el primer resultado
 
         Args:
             query (str): Consulta SQL
-            params (Tuple): Parámetros para la consulta
+            params (tuple/list/dict): Parámetros
 
         Returns:
-            List[Dict]: Resultados de la consulta
+            Diccionario con el primer resultado o None
         """
-        try:
-            return db.fetch_all(query, params)
-        except Exception as e:
-            logger.error(f"❌ Error en consulta cruda: {e}\nConsulta: {query}")
-            return []
+        results = self.execute_query(query, params, fetch=True)
+        return results[0] if results else None
 
-    @classmethod
-    def execute_update(cls, query: str, params: Tuple = None) -> bool:
+    def fetch_all(self, query, params=None):
         """
-        Ejecuta una consulta de actualización sin retorno.
+        Ejecuta una consulta y retorna todos los resultados
 
         Args:
             query (str): Consulta SQL
-            params (Tuple): Parámetros para la consulta
+            params (tuple/list/dict): Parámetros
 
         Returns:
-            bool: True si se ejecutó correctamente
+            Lista de diccionarios con resultados
+        """
+        return self.execute_query(query, params, fetch=True)
+
+    def insert(self, table, data, returning="id"):
+        """
+        Inserta un registro en una tabla
+
+        Args:
+            table (str): Nombre de la tabla
+            data (dict): Datos a insertar (columna: valor)
+            returning (str): Columna a retornar después del INSERT
+
+        Returns:
+            Valor de la columna returning o None en caso de error
+        """
+        if not data:
+            return None
+
+        try:
+            columns = ", ".join(data.keys())
+            placeholders = ", ".join(["%s"] * len(data))
+            values = tuple(data.values())
+
+            query = f"INSERT INTO {table} ({columns}) VALUES ({placeholders})"
+
+            if returning:
+                query += f" RETURNING {returning}"
+
+            result = self.execute_query(query, values, fetch=True, commit=True)
+
+            if result:
+                return (
+                    result[0]
+                    if isinstance(result, list) and len(result) == 1
+                    else result
+                )
+            return None
+
+        except Exception as e:
+            print(f"Error insertando en tabla {table}: {e}")
+            return None
+
+    def update(self, table, data, where_condition, where_params=None):
+        """
+        Actualiza registros en una tabla
+
+        Args:
+            table (str): Nombre de la tabla
+            data (dict): Datos a actualizar (columna: valor)
+            where_condition (str): Condición WHERE
+            where_params (tuple/list): Parámetros para la condición WHERE
+
+        Returns:
+            Número de filas afectadas o None en caso de error
+        """
+        if not data:
+            return 0
+
+        try:
+            set_clause = ", ".join([f"{key} = %s" for key in data.keys()])
+            values = tuple(data.values())
+
+            query = f"UPDATE {table} SET {set_clause} WHERE {where_condition}"
+
+            # Combinar parámetros
+            if where_params:
+                params = values + tuple(where_params)
+            else:
+                params = values
+
+            result = self.execute_query(query, params, fetch=False, commit=True)
+            return result.rowcount if result else 0
+
+        except Exception as e:
+            print(f"Error actualizando tabla {table}: {e}")
+            return None
+
+    def delete(self, table, where_condition, where_params=None):
+        """
+        Elimina registros de una tabla
+
+        Args:
+            table (str): Nombre de la tabla
+            where_condition (str): Condición WHERE
+            where_params (tuple/list): Parámetros para la condición WHERE
+
+        Returns:
+            Número de filas afectadas o None en caso de error
         """
         try:
-            db.execute_query(query, params, fetch=False)
+            query = f"DELETE FROM {table} WHERE {where_condition}"
+            result = self.execute_query(query, where_params, fetch=False, commit=True)
+            return result.rowcount if result else 0
+
+        except Exception as e:
+            print(f"Error eliminando de tabla {table}: {e}")
+            return None
+
+    def begin_transaction(self):
+        """Inicia una transacción"""
+        try:
+            self.execute_query("BEGIN", commit=False)
             return True
         except Exception as e:
-            logger.error(
-                f"❌ Error en consulta de actualización: {e}\nConsulta: {query}"
-            )
+            print(f"Error iniciando transacción: {e}")
             return False
 
-    @classmethod
-    def get_table_info(cls) -> Dict:
+    def commit_transaction(self):
+        """Confirma una transacción"""
+        try:
+            self.connection.commit()
+            return True
+        except Exception as e:
+            print(f"Error confirmando transacción: {e}")
+            return False
+
+    def rollback_transaction(self):
+        """Revierte una transacción"""
+        try:
+            self.connection.rollback()
+            return True
+        except Exception as e:
+            print(f"Error revirtiendo transacción: {e}")
+            return False
+
+    def table_exists(self, table_name):
         """
-        Obtiene información de la tabla (columnas, tipos, etc.).
+        Verifica si una tabla existe en la base de datos
+
+        Args:
+            table_name (str): Nombre de la tabla
 
         Returns:
-            Dict: Información de la tabla
+            bool: True si la tabla existe, False en caso contrario
         """
-        query = """
-            SELECT 
-                column_name,
-                data_type,
-                is_nullable,
-                column_default
-            FROM information_schema.columns
-            WHERE table_name = %s AND table_schema = 'public'
+        try:
+            query = """
+            SELECT EXISTS (
+                SELECT FROM information_schema.tables 
+                WHERE table_schema = 'public' 
+                AND table_name = %s
+            )
+            """
+            result = self.fetch_one(query, (table_name,))
+            return result["exists"] if result else False
+        except Exception as e:
+            print(f"Error verificando existencia de tabla {table_name}: {e}")
+            return False
+
+    def get_table_columns(self, table_name):
+        """
+        Obtiene las columnas de una tabla
+
+        Args:
+            table_name (str): Nombre de la tabla
+
+        Returns:
+            Lista de nombres de columnas
+        """
+        try:
+            query = """
+            SELECT column_name 
+            FROM information_schema.columns 
+            WHERE table_schema = 'public' 
+            AND table_name = %s 
             ORDER BY ordinal_position
-        """
-        results = db.fetch_all(query, (cls.TABLE_NAME,))
-
-        info = {
-            "table_name": cls.TABLE_NAME,
-            "columns": results,
-            "column_count": len(results),
-        }
-
-        return info
-
-    @classmethod
-    def backup_to_json(cls, filepath: str) -> bool:
-        """
-        Realiza un backup de la tabla a un archivo JSON.
-
-        Args:
-            filepath (str): Ruta del archivo JSON de salida
-
-        Returns:
-            bool: True si se realizó el backup correctamente
-        """
-        try:
-            records = cls.find_all(limit=10000)  # Limitar para backups grandes
-            data = [record.to_dict() for record in records]
-
-            with open(filepath, "w", encoding="utf-8") as f:
-                json.dump(data, f, default=str, ensure_ascii=False, indent=2)
-
-            logger.info(
-                f"✅ Backup realizado: {len(data)} registros guardados en {filepath}"
-            )
-            return True
+            """
+            results = self.fetch_all(query, (table_name,))
+            return [row["column_name"] for row in results] if results else []
         except Exception as e:
-            logger.error(f"❌ Error en backup: {e}")
-            return False
+            print(f"Error obteniendo columnas de tabla {table_name}: {e}")
+            return []

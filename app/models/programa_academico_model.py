@@ -18,7 +18,7 @@ Características principales:
 from datetime import datetime, date
 from typing import Optional, List, Dict, Any, Union
 from enum import Enum
-from app.models.base_model import BaseModel
+from .base_model import BaseModel
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError, IntegrityError
 

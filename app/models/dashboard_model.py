@@ -1,448 +1,476 @@
-# app/models/dashboard_model.py
-"""
-app/models/dashboard_model.py
-Modelo de datos para el dashboard
-"""
-from datetime import datetime, timedelta
-from pathlib import Path
-from typing import Dict, List, Any, Optional
+# app/models/dashboard_model.py - Versión completa y optimizada
+import sys
+import os
 
-from app.database.connection import db  # Importar conexión centralizada
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-try:
-    from .estudiante_model import EstudianteModel
-    from database.database import db
-
-    HAS_ESTUDIANTE_MODEL = True
-except ImportError as e:
-    print(f"⚠️  No se pudo importar EstudianteModel: {e}")
-    HAS_ESTUDIANTE_MODEL = False
-
-import json
+from .base_model import BaseModel
+from datetime import datetime
 
 
-class DashboardModel:
-    """Modelo para manejar datos del dashboard"""
+class DashboardModel(BaseModel):
+    def __init__(self):
+        """Inicializa el modelo del dashboard"""
+        super().__init__()
+        self._ensure_connection()
 
-    def __init__(self, db_path: Optional[str] = None):
-        """Inicializar modelo de dashboard"""
-        if db_path:
-            self.db_path = Path(db_path)
-        else:
-            # Ruta por defecto
-            current_dir = Path(__file__).parent.parent.parent
-            self.db_path = current_dir / "data" / "formagestpro.db"
+    def _ensure_connection(self):
+        """Asegura que hay una conexión activa a la base de datos"""
+        if not hasattr(self, "connection") or self.connection is None:
+            from app.database.connection import PostgreSQLConnection
 
-        # Crear directorio si no existe
-        self.db_path.parent.mkdir(exist_ok=True)
+            self.connection = PostgreSQLConnection().get_connection()
 
-        # Inicializar base de datos
-        self.init_database()
+    # ============ MÉTODOS PARA ESTUDIANTES ============
 
-    def init_database(self):
-        """Inicializar base de datos si no existe"""
-        if not self.db_path.exists():
-            print(f"📁 Creando base de datos en: {self.db_path}")
-            self.create_tables()
-            self.insert_sample_data()
-
-    def create_tables(self):
-        """Crear tablas necesarias"""
-        conn = db.get_connection()
-        cursor = conn.cursor()
-
-        # Tabla de estudiantes
-        cursor.execute(
-            """
-            CREATE TABLE IF NOT EXISTS estudiantes (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                nombre TEXT NOT NULL,
-                apellido TEXT NOT NULL,
-                cedula TEXT UNIQUE NOT NULL,
-                email TEXT,
-                telefono TEXT,
-                programa_id INTEGER,
-                fecha_inscripcion DATE,
-                estado TEXT DEFAULT 'activo',
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
+    def get_estudiantes_por_programa(self, estado="Activo", limit=10):
         """
-        )
-
-        # Tabla de docentes
-        cursor.execute(
-            """
-            CREATE TABLE IF NOT EXISTS docentes (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                nombre TEXT NOT NULL,
-                apellido TEXT NOT NULL,
-                cedula TEXT UNIQUE NOT NULL,
-                especialidad TEXT,
-                email TEXT,
-                telefono TEXT,
-                estado TEXT DEFAULT 'activo',
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
+        Obtiene la cantidad de estudiantes por programa
+        Args:
+            estado: Filtrar por estado (Activo/Inactivo/Todos)
+            limit: Límite de resultados a retornar
+        Returns:
+            Lista de diccionarios con programa y cantidad
         """
-        )
+        try:
+            if estado == "Todos":
+                query = """
+                SELECT 
+                    COALESCE(p.nombre, 'Sin programa') as programa,
+                    COUNT(e.id) as cantidad
+                FROM estudiantes e
+                LEFT JOIN programas p ON e.programa_id = p.id
+                GROUP BY p.nombre
+                ORDER BY cantidad DESC
+                LIMIT %s
+                """
+                params = (limit,)
+            else:
+                query = """
+                SELECT 
+                    COALESCE(p.nombre, 'Sin programa') as programa,
+                    COUNT(e.id) as cantidad
+                FROM estudiantes e
+                LEFT JOIN programas p ON e.programa_id = p.id
+                WHERE e.estado = %s
+                GROUP BY p.nombre
+                ORDER BY cantidad DESC
+                LIMIT %s
+                """
+                params = (estado, limit)
 
-        # Tabla de programas
-        cursor.execute(
-            """
-            CREATE TABLE IF NOT EXISTS programas (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                nombre TEXT NOT NULL,
-                codigo TEXT UNIQUE NOT NULL,
-                duracion_meses INTEGER,
-                costo_total REAL,
-                estado TEXT DEFAULT 'activo',
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
+            return self.execute_query(query, params)
+        except Exception as e:
+            print(f"Error obteniendo estudiantes por programa: {e}")
+            return []
+
+    def execute_query(self, query, params=None, fetch=True, commit=False):
         """
-        )
-
-        # Tabla de cursos
-        cursor.execute(
-            """
-            CREATE TABLE IF NOT EXISTS cursos (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                nombre TEXT NOT NULL,
-                programa_id INTEGER,
-                docente_id INTEGER,
-                fecha_inicio DATE,
-                fecha_fin DATE,
-                estado TEXT DEFAULT 'en_progreso',
-                progreso INTEGER DEFAULT 0,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY (programa_id) REFERENCES programas(id),
-                FOREIGN KEY (docente_id) REFERENCES docentes(id)
-            )
+        Ejecuta una consulta SQL
+        Args:
+            query: Consulta SQL a ejecutar
+            params: Parámetros para la consulta (tupla o lista)
+            fetch: Si es True, retorna resultados de SELECT
+            commit: Si es True, hace commit de la transacción
+        Returns:
+            Resultados de la consulta o None
         """
-        )
+        return BaseModel.execute_query(query, params)
 
-        # Tabla de pagos
-        cursor.execute(
-            """
-            CREATE TABLE IF NOT EXISTS pagos (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                estudiante_id INTEGER,
-                monto REAL NOT NULL,
-                concepto TEXT,
-                fecha_pago DATE,
-                metodo_pago TEXT,
-                estado TEXT DEFAULT 'completado',
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY (estudiante_id) REFERENCES estudiantes(id)
-            )
+    def get_total_estudiantes_por_programa(self, programa_id, estado="Activo"):
         """
-        )
-
-        # Tabla de actividad
-        cursor.execute(
-            """
-            CREATE TABLE IF NOT EXISTS actividad (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                usuario TEXT,
-                accion TEXT,
-                detalle TEXT,
-                fecha_hora TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
+        Obtiene el total de estudiantes de un programa específico
+        Args:
+            programa_id: ID del programa
+            estado: Estado de los estudiantes
+        Returns:
+            Número total de estudiantes en el programa
         """
-        )
+        try:
+            if estado == "Todos":
+                query = """
+                SELECT COUNT(*) as total
+                FROM estudiantes
+                WHERE programa_id = %s
+                """
+                params = (programa_id,)
+            else:
+                query = """
+                SELECT COUNT(*) as total
+                FROM estudiantes
+                WHERE programa_id = %s AND estado = %s
+                """
+                params = (programa_id, estado)
 
-        conn.commit()
-        conn.close()
+            result = self.execute_query(query, params)
+            return result[0]["total"] if result else 0
+        except Exception as e:
+            print(f"Error obteniendo total estudiantes por programa: {e}")
+            return 0
 
-    def insert_sample_data(self):
-        """Insertar datos de ejemplo"""
-        conn = db.get_connection()
-        cursor = conn.cursor()
+    # ============ MÉTODOS PARA DOCENTES ============
 
-        # Insertar programas
-        programas = [
-            ("Ingeniería de Sistemas", "IS-001", 48, 15000.0),
-            ("Administración de Empresas", "AE-002", 36, 12000.0),
-            ("Contabilidad", "CT-003", 36, 11000.0),
-            ("Derecho", "DR-004", 60, 18000.0),
-            ("Psicología", "PS-005", 48, 14000.0),
-        ]
-
-        cursor.executemany(
-            "INSERT INTO programas (nombre, codigo, duracion_meses, costo_total) VALUES (?, ?, ?, ?)",
-            programas,
-        )
-
-        # Insertar docentes
-        docentes = [
-            (
-                "Carlos",
-                "Ruiz",
-                "V-12345678",
-                "Informática",
-                "carlos.ruiz@example.com",
-                "0412-1111111",
-            ),
-            (
-                "Ana",
-                "López",
-                "V-87654321",
-                "Administración",
-                "ana.lopez@example.com",
-                "0412-2222222",
-            ),
-            (
-                "Pedro",
-                "Martínez",
-                "V-11223344",
-                "Contabilidad",
-                "pedro.martinez@example.com",
-                "0412-3333333",
-            ),
-            (
-                "María",
-                "García",
-                "V-44332211",
-                "Derecho",
-                "maria.garcia@example.com",
-                "0412-4444444",
-            ),
-        ]
-
-        cursor.executemany(
-            "INSERT INTO docentes (nombre, apellido, cedula, especialidad, email, telefono) VALUES (?, ?, ?, ?, ?, ?)",
-            docentes,
-        )
-
-        conn.commit()
-        conn.close()
-
-    def get_dashboard_data(self) -> Dict[str, Any]:
-        """Obtener todos los datos necesarios para el dashboard"""
-        return {
-            "estudiantes": self.get_total_estudiantes(),
-            "docentes": self.get_total_docentes(),
-            "programas": self.get_total_programas(),
-            "cursos": self.get_total_cursos(),
-            "ingresos_mes": self.get_ingresos_mes_actual(),
-            "eficiencia": self.get_eficiencia_sistema(),
-            "estudiantes_por_programa": self.get_estudiantes_por_programa(),
-            "ingresos_ultimos_meses": self.get_ingresos_ultimos_meses(6),
-            "actividad_reciente": self.get_actividad_reciente(10),
-            "cursos_en_progreso": self.get_cursos_en_progreso(),
-        }
-
-    def get_total_estudiantes(self) -> int:
-        """Obtener total de estudiantes"""
-        conn = db.get_connection()
-        cursor = conn.cursor()
-
-        cursor.execute("SELECT COUNT(*) FROM estudiantes WHERE estado = 'activo'")
-        count = cursor.fetchone()[0]
-
-        conn.close()
-        return count or 24  # Valor por defecto si no hay datos
-
-    def get_total_docentes(self) -> int:
-        """Obtener total de docentes"""
-        conn = db.get_connection()
-        cursor = conn.cursor()
-
-        cursor.execute("SELECT COUNT(*) FROM docentes WHERE estado = 'activo'")
-        count = cursor.fetchone()[0]
-
-        conn.close()
-        return count or 8  # Valor por defecto
-
-    def get_total_programas(self) -> int:
-        """Obtener total de programas"""
-        conn = db.get_connection()
-        cursor = conn.cursor()
-
-        cursor.execute("SELECT COUNT(*) FROM programas WHERE estado = 'activo'")
-        count = cursor.fetchone()[0]
-
-        conn.close()
-        return count or 6  # Valor por defecto
-
-    def get_total_cursos(self) -> int:
-        """Obtener total de cursos"""
-        conn = db.get_connection()
-        cursor = conn.cursor()
-
-        cursor.execute("SELECT COUNT(*) FROM cursos WHERE estado = 'en_progreso'")
-        count = cursor.fetchone()[0]
-
-        conn.close()
-        return count or 18  # Valor por defecto
-
-    def get_ingresos_mes_actual(self) -> float:
-        """Obtener ingresos del mes actual"""
-        conn = db.get_connection()
-        cursor = conn.cursor()
-
-        current_month = datetime.now().strftime("%Y-%m")
-        cursor.execute(
-            "SELECT SUM(monto) FROM pagos WHERE strftime('%Y-%m', fecha_pago) = ?",
-            (current_month,),
-        )
-
-        result = cursor.fetchone()[0]
-        conn.close()
-        return float(result) if result else 15240.0
-
-    def get_eficiencia_sistema(self) -> float:
-        """Calcular eficiencia del sistema"""
-        # Esta sería una métrica más compleja en producción
-        return 94.0  # Valor por defecto
-
-    def get_estudiantes_por_programa(self) -> Dict[str, int]:
-        """Obtener distribución de estudiantes por programa"""
-        conn = db.get_connection()
-        cursor = conn.cursor()
-
-        cursor.execute(
-            """
-            SELECT p.nombre, COUNT(e.id) 
-            FROM programas p
-            LEFT JOIN estudiantes e ON p.id = e.programa_id AND e.estado = 'activo'
-            WHERE p.estado = 'activo'
-            GROUP BY p.id, p.nombre
+    def get_docentes_por_departamento(self, estado="Activo", limit=10):
         """
-        )
+        Obtiene la cantidad de docentes por departamento
+        Args:
+            estado: Filtrar por estado (Activo/Inactivo/Todos)
+            limit: Límite de resultados a retornar
+        Returns:
+            Lista de diccionarios con departamento y cantidad
+        """
+        try:
+            if estado == "Todos":
+                query = """
+                SELECT 
+                    COALESCE(d.nombre, 'Sin departamento') as departamento,
+                    COUNT(doc.id) as cantidad
+                FROM docentes doc
+                LEFT JOIN departamentos d ON doc.departamento_id = d.id
+                GROUP BY d.nombre
+                ORDER BY cantidad DESC
+                LIMIT %s
+                """
+                params = (limit,)
+            else:
+                query = """
+                SELECT 
+                    COALESCE(d.nombre, 'Sin departamento') as departamento,
+                    COUNT(doc.id) as cantidad
+                FROM docentes doc
+                LEFT JOIN departamentos d ON doc.departamento_id = d.id
+                WHERE doc.estado = %s
+                GROUP BY d.nombre
+                ORDER BY cantidad DESC
+                LIMIT %s
+                """
+                params = (estado, limit)
 
-        result = cursor.fetchall()
-        conn.close()
+            return self.execute_query(query, params)
+        except Exception as e:
+            print(f"Error obteniendo docentes por departamento: {e}")
+            return []
 
-        if result:
-            return {programa: count for programa, count in result}
-        else:
-            # Datos de ejemplo
+    def get_total_docentes_por_departamento(self, departamento_id, estado="Activo"):
+        """
+        Obtiene el total de docentes de un departamento específico
+        Args:
+            departamento_id: ID del departamento
+            estado: Estado de los docentes
+        Returns:
+            Número total de docentes en el departamento
+        """
+        try:
+            if estado == "Todos":
+                query = """
+                SELECT COUNT(*) as total
+                FROM docentes
+                WHERE departamento_id = %s
+                """
+                params = (departamento_id,)
+            else:
+                query = """
+                SELECT COUNT(*) as total
+                FROM docentes
+                WHERE departamento_id = %s AND estado = %s
+                """
+                params = (departamento_id, estado)
+
+            result = self.execute_query(query, params)
+            return result[0]["total"] if result else 0
+        except Exception as e:
+            print(f"Error obteniendo total docentes por departamento: {e}")
+            return 0
+
+    # ============ MÉTODOS PARA CURSOS ============
+
+    def get_cursos_activos(self):
+        """
+        Obtiene el número de cursos activos
+        Returns:
+            Número total de cursos activos
+        """
+        try:
+            query = """
+            SELECT COUNT(*) as total 
+            FROM cursos 
+            WHERE estado = 'Activo' OR estado = 'activo'
+            """
+            result = self.execute_query(query)
+            return result[0]["total"] if result else 0
+        except Exception as e:
+            print(f"Error obteniendo cursos activos: {e}")
+            return 0
+
+    def get_total_cursos(self, estado="Todos"):
+        """
+        Obtiene el total de cursos
+        Args:
+            estado: Filtrar por estado (Activo/Inactivo/Todos)
+        Returns:
+            Número total de cursos
+        """
+        try:
+            if estado == "Todos":
+                query = "SELECT COUNT(*) as total FROM cursos"
+                params = ()
+            else:
+                query = "SELECT COUNT(*) as total FROM cursos WHERE estado = %s"
+                params = (estado,)
+
+            result = self.execute_query(query, params)
+            return result[0]["total"] if result else 0
+        except Exception as e:
+            print(f"Error obteniendo total cursos: {e}")
+            return 0
+
+    def get_cursos_por_estado(self):
+        """
+        Obtiene la distribución de cursos por estado
+        Returns:
+            Lista de diccionarios con estado y cantidad
+        """
+        try:
+            query = """
+            SELECT 
+                estado,
+                COUNT(*) as cantidad
+            FROM cursos
+            GROUP BY estado
+            ORDER BY cantidad DESC
+            """
+            return self.execute_query(query)
+        except Exception as e:
+            print(f"Error obteniendo cursos por estado: {e}")
+            return []
+
+    def get_cursos_por_departamento(self, limit=10):
+        """
+        Obtiene la cantidad de cursos por departamento
+        Args:
+            limit: Límite de resultados
+        Returns:
+            Lista de diccionarios con departamento y cantidad
+        """
+        try:
+            query = """
+            SELECT 
+                COALESCE(d.nombre, 'Sin departamento') as departamento,
+                COUNT(c.id) as cantidad
+            FROM cursos c
+            LEFT JOIN departamentos d ON c.departamento_id = d.id
+            WHERE c.estado = 'Activo'
+            GROUP BY d.nombre
+            ORDER BY cantidad DESC
+            LIMIT %s
+            """
+            return self.execute_query(query, (limit,))
+        except Exception as e:
+            print(f"Error obteniendo cursos por departamento: {e}")
+            return []
+
+    # ============ MÉTODOS PARA ESTADÍSTICAS GENERALES ============
+
+    def get_total_inscripciones(self):
+        """
+        Obtiene el total de inscripciones
+        Returns:
+            Número total de inscripciones
+        """
+        try:
+            query = "SELECT COUNT(*) as total FROM inscripciones"
+            result = self.execute_query(query)
+            return result[0]["total"] if result else 0
+        except Exception as e:
+            print(f"Error obteniendo total inscripciones: {e}")
+            return 0
+
+    def get_inscripciones_activas(self):
+        """
+        Obtiene el total de inscripciones activas
+        Returns:
+            Número total de inscripciones activas
+        """
+        try:
+            query = """
+            SELECT COUNT(*) as total 
+            FROM inscripciones 
+            WHERE estado = 'Activo' OR estado = 'activo'
+            """
+            result = self.execute_query(query)
+            return result[0]["total"] if result else 0
+        except Exception as e:
+            print(f"Error obteniendo inscripciones activas: {e}")
+            return 0
+
+    def get_top_cursos_populares(self, limit=5):
+        """
+        Obtiene los cursos más populares (con más inscripciones)
+        Args:
+            limit: Límite de cursos a mostrar
+        Returns:
+            Lista de diccionarios con curso y cantidad de inscripciones
+        """
+        try:
+            query = """
+            SELECT 
+                c.nombre as curso,
+                COUNT(i.id) as inscripciones
+            FROM cursos c
+            LEFT JOIN inscripciones i ON c.id = i.curso_id
+            WHERE c.estado = 'Activo'
+            GROUP BY c.id, c.nombre
+            ORDER BY inscripciones DESC
+            LIMIT %s
+            """
+            return self.execute_query(query, (limit,))
+        except Exception as e:
+            print(f"Error obteniendo cursos populares: {e}")
+            return []
+
+    # ============ MÉTODOS PARA ESTADÍSTICAS TEMPORALES ============
+
+    def get_registros_mensuales(self, año=None, tipo="estudiantes"):
+        """
+        Obtiene registros mensuales por tipo
+        Args:
+            año: Año a consultar (None para año actual)
+            tipo: Tipo de registros ('estudiantes', 'docentes', 'cursos')
+        Returns:
+            Lista de diccionarios con mes y cantidad
+        """
+        try:
+            if año is None:
+                año = datetime.now().year
+
+            # Determinar la tabla según el tipo
+            if tipo == "estudiantes":
+                tabla = "estudiantes"
+            elif tipo == "docentes":
+                tabla = "docentes"
+            elif tipo == "cursos":
+                tabla = "cursos"
+            else:
+                raise ValueError(f"Tipo no válido: {tipo}")
+
+            query = f"""
+            SELECT 
+                EXTRACT(MONTH FROM fecha_registro) as mes,
+                COUNT(*) as cantidad
+            FROM {tabla}
+            WHERE EXTRACT(YEAR FROM fecha_registro) = %s
+            GROUP BY EXTRACT(MONTH FROM fecha_registro)
+            ORDER BY mes
+            """
+
+            return self.execute_query(query, (año,))
+        except Exception as e:
+            print(f"Error obteniendo registros mensuales: {e}")
+            return []
+
+    def get_estadisticas_crecimiento(self, tipo="estudiantes", meses=6):
+        """
+        Obtiene estadísticas de crecimiento
+        Args:
+            tipo: Tipo de entidad ('estudiantes', 'docentes', 'cursos')
+            meses: Número de meses a considerar
+        Returns:
+            Diccionario con estadísticas de crecimiento
+        """
+        try:
+            if tipo == "estudiantes":
+                tabla = "estudiantes"
+            elif tipo == "docentes":
+                tabla = "docentes"
+            elif tipo == "cursos":
+                tabla = "cursos"
+            else:
+                raise ValueError(f"Tipo no válido: {tipo}")
+
+            # Total actual
+            query_total = f"SELECT COUNT(*) as total FROM {tabla}"
+            result_total = self.execute_query(query_total)
+            total_actual = result_total[0]["total"] if result_total else 0
+
+            # Total hace X meses
+            query_anterior = f"""
+            SELECT COUNT(*) as total 
+            FROM {tabla} 
+            WHERE fecha_registro < CURRENT_DATE - INTERVAL '{meses} months'
+            """
+            result_anterior = self.execute_query(query_anterior)
+            total_anterior = result_anterior[0]["total"] if result_anterior else 0
+
+            # Calcular crecimiento
+            if total_anterior > 0:
+                crecimiento_porcentaje = (
+                    (total_actual - total_anterior) / total_anterior
+                ) * 100
+            else:
+                crecimiento_porcentaje = 100 if total_actual > 0 else 0
+
             return {
-                "Ing. Sistemas": 12,
-                "Administración": 8,
-                "Contabilidad": 4,
-                "Derecho": 6,
-                "Psicología": 3,
+                "total_actual": total_actual,
+                "total_anterior": total_anterior,
+                "crecimiento_absoluto": total_actual - total_anterior,
+                "crecimiento_porcentaje": round(crecimiento_porcentaje, 2),
+                "periodo_meses": meses,
+            }
+        except Exception as e:
+            print(f"Error obteniendo estadísticas de crecimiento: {e}")
+            return {
+                "total_actual": 0,
+                "total_anterior": 0,
+                "crecimiento_absoluto": 0,
+                "crecimiento_porcentaje": 0,
+                "periodo_meses": meses,
             }
 
-    def get_ingresos_ultimos_meses(self, months: int = 6) -> List[tuple]:
-        """Obtener ingresos de los últimos N meses"""
-        conn = db.get_connection()
-        cursor = conn.cursor()
+    # ============ MÉTODOS PARA REPORTES ============
 
-        # Generar últimos N meses
-        months_data = []
-        for i in range(months - 1, -1, -1):
-            date = datetime.now() - timedelta(days=30 * i)
-            month_key = date.strftime("%Y-%m")
-            month_name = date.strftime("%b")
-
-            cursor.execute(
-                "SELECT SUM(monto) FROM pagos WHERE strftime('%Y-%m', fecha_pago) = ?",
-                (month_key,),
-            )
-
-            result = cursor.fetchone()[0]
-            amount = float(result) if result else 0
-
-            # Si no hay datos, generar valores realistas
-            if amount == 0:
-                base_amount = 12000 + (i * 800)
-                variation = (i % 3) * 500
-                amount = base_amount + variation
-
-            months_data.append((month_name, amount))
-
-        conn.close()
-        return months_data
-
-    def get_actividad_reciente(self, limit: int = 10) -> List[tuple]:
-        """Obtener actividad reciente del sistema"""
-        conn = db.get_connection()
-        cursor = conn.cursor()
-
-        cursor.execute(
-            """
-            SELECT usuario, accion, detalle, 
-                   strftime('%d/%m/%Y %H:%M', fecha_hora) as fecha_formateada
-            FROM actividad 
-            ORDER BY fecha_hora DESC 
-            LIMIT ?
-        """,
-            (limit,),
-        )
-
-        result = cursor.fetchall()
-        conn.close()
-
-        if result:
-            return [(row[0], row[1], row[3], "success") for row in result]
-        else:
-            # Datos de ejemplo
-            return [
-                (
-                    "María García",
-                    "Nuevo estudiante registrado",
-                    "Hace 2 horas",
-                    "success",
-                ),
-                (
-                    "Carlos Ruiz",
-                    "Pago de matrícula realizado",
-                    "Hace 4 horas",
-                    "payment",
-                ),
-                ("Ana López", "Asignación de tutor completada", "Ayer", "assignment"),
-                ("Pedro Martínez", "Nuevo programa creado", "Ayer", "program"),
-                ("Laura Torres", "Certificado generado", "Hace 3 días", "certificate"),
-            ]
-
-    def get_cursos_en_progreso(self) -> List[tuple]:
-        """Obtener cursos en progreso"""
-        conn = db.get_connection()
-        cursor = conn.cursor()
-
-        cursor.execute(
-            """
-            SELECT c.nombre, c.progreso, 
-                   COUNT(DISTINCT e.id) as estudiantes,
-                   p.color
-            FROM cursos c
-            LEFT JOIN programas p ON c.programa_id = p.id
-            LEFT JOIN estudiantes e ON e.programa_id = p.id
-            WHERE c.estado = 'en_progreso'
-            GROUP BY c.id, c.nombre, c.progreso
+    def get_resumen_general(self):
         """
-        )
+        Obtiene un resumen general de todas las estadísticas
+        Returns:
+            Diccionario con resumen completo
+        """
+        try:
+            return {
+                "estudiantes": {
+                    "total": self.get_total_estudiantes_por_programa(None, "Todos"),
+                    "activos": self.get_total_estudiantes_por_programa(None, "Activo"),
+                    "por_programa": self.get_estudiantes_por_programa("Activo", 5),
+                },
+                "docentes": {
+                    "total": self.get_total_docentes_por_departamento(None, "Todos"),
+                    "activos": self.get_total_docentes_por_departamento(None, "Activo"),
+                    "por_departamento": self.get_docentes_por_departamento("Activo", 5),
+                },
+                "cursos": {
+                    "total": self.get_total_cursos("Todos"),
+                    "activos": self.get_cursos_activos(),
+                    "por_departamento": self.get_cursos_por_departamento(5),
+                    "populares": self.get_top_cursos_populares(5),
+                },
+                "inscripciones": {
+                    "total": self.get_total_inscripciones(),
+                    "activas": self.get_inscripciones_activas(),
+                },
+            }
+        except Exception as e:
+            print(f"Error obteniendo resumen general: {e}")
+            return {}
 
-        result = cursor.fetchall()
-        conn.close()
+    # ============ MÉTODOS DE COMPATIBILIDAD ============
 
-        if result:
-            colors = ["#3498db", "#2ecc71", "#e74c3c", "#9b59b6", "#1abc9c"]
-            return [
-                (row[0], row[1], row[2] or 0, colors[i % len(colors)])
-                for i, row in enumerate(result)
-            ]
-        else:
-            # Datos de ejemplo
-            return [
-                ("Python Avanzado", 75, 24, "#3498db"),
-                ("Base de Datos SQL", 60, 18, "#2ecc71"),
-                ("Desarrollo Web Full Stack", 45, 30, "#e74c3c"),
-                ("Machine Learning", 30, 12, "#9b59b6"),
-                ("Docker y Kubernetes", 20, 15, "#1abc9c"),
-            ]
+    def estudiantes_por_programa(self):
+        """Método de compatibilidad con nombres antiguos"""
+        return self.get_estudiantes_por_programa()
 
-    def add_activity(self, usuario: str, accion: str, detalle: str = ""):
-        """Agregar registro de actividad"""
-        conn = db.get_connection()
-        cursor = conn.cursor()
+    def docentes_por_departamento(self):
+        """Método de compatibilidad con nombres antiguos"""
+        return self.get_docentes_por_departamento()
 
-        cursor.execute(
-            "INSERT INTO actividad (usuario, accion, detalle) VALUES (?, ?, ?)",
-            (usuario, accion, detalle),
-        )
-
-        conn.commit()
-        conn.close()
+    def cursos_activos(self):
+        """Método de compatibilidad con nombres antiguos"""
+        return self.get_cursos_activos()

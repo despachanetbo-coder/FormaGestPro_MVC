@@ -1,415 +1,507 @@
-# app/models/estudiante.py
-"""
-Modelo Estudiante usando PostgreSQL directamente.
-"""
-import logging
-from typing import Any, List, Dict, Optional
-from datetime import datetime, date
-from .base_model import BaseModel
+# app/models/estudiante_model.py - Versión corregida y optimizada
+import sys
+import os
 
-logger = logging.getLogger(__name__)
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from .base_model import BaseModel
+from datetime import datetime
 
 
 class EstudianteModel(BaseModel):
-    """Modelo que representa a un estudiante"""
+    def __init__(self):
+        """Inicializa el modelo de estudiantes"""
+        super().__init__()
+        self.table_name = "estudiantes"
 
-    TABLE_NAME = "estudiantes"
+    # ============ MÉTODOS CRUD BÁSICOS ============
 
-    # Lista de expediciones válidas para CI
-    EXPEDICIONES_VALIDAS = ["BE", "CH", "CB", "LP", "OR", "PD", "PT", "SC", "TJ", "EX"]
-
-    def __init__(self, **kwargs):
+    def create(self, data):
         """
-        Inicializa un estudiante.
-
-        Campos esperados (según esquema de BD):
-            ci_numero, ci_expedicion, nombres, apellidos, fecha_nacimiento,
-            telefono, email, universidad_egreso, profesion, fotografia_path,
-            fecha_registro, activo
+        Crea un nuevo estudiante
+        Args:
+            data: Diccionario con los datos del estudiante
+        Returns:
+            ID del estudiante creado o None si hay error
         """
-        # Campos obligatorios
-        self.ci_numero = kwargs.get("ci_numero")
-        self.ci_expedicion = kwargs.get("ci_expedicion")
-        self.nombres = kwargs.get("nombres")
-        self.apellidos = kwargs.get("apellidos")
+        required_fields = [
+            "ci",
+            "nombre",
+            "apellido",
+            "email",
+            "telefono",
+            "direccion",
+            "fecha_nacimiento",
+        ]
 
-        # Campos opcionales
-        self.fecha_nacimiento = kwargs.get("fecha_nacimiento")
-        self.telefono = kwargs.get("telefono")
-        self.email = kwargs.get("email")
-        self.universidad_egreso = kwargs.get("universidad_egreso")
-        self.profesion = kwargs.get("profesion")
-        self.fotografia_path = kwargs.get("fotografia_path")  # Asegurar que se guarda
-        self.fecha_registro = kwargs.get("fecha_registro", datetime.now().isoformat())
-        self.activo = kwargs.get("activo", 1)
-
-        # ID (si viene de la base de datos)
-        if "id" in kwargs:
-            self.id = kwargs["id"]
-
-        # Validaciones básicas
-        self._validar()
-
-    def _validar(self):
-        """Valida los datos del estudiante"""
-        if not self.ci_numero or not self.nombres or not self.apellidos:
-            raise ValueError("CI, nombres y apellidos son obligatorios")
-
-        if self.ci_expedicion and self.ci_expedicion not in self.EXPEDICIONES_VALIDAS:
-            raise ValueError(
-                f"Expedición de CI inválida. Válidas: {self.EXPEDICIONES_VALIDAS}"
-            )
-
-        if self.email:
-            # Validación simple de email
-            if "@" not in self.email or "." not in self.email.split("@")[-1]:
-                raise ValueError("Formato de email inválido")
-
-    def __repr__(self):
-        return f"<Estudiante {self.ci_numero}: {self.nombres} {self.apellidos}>"
-
-    @property
-    def nombre_completo(self) -> str:
-        """Devuelve el nombre completo del estudiante"""
-        return f"{self.nombres} {self.apellidos}"
-
-    @property
-    def edad(self) -> Optional[int]:
-        """Calcula la edad del estudiante"""
-        if not self.fecha_nacimiento:
-            return None
-
-        try:
-            if isinstance(self.fecha_nacimiento, str):
-                nacimiento = datetime.strptime(self.fecha_nacimiento, "%Y-%m-%d").date()
-            else:
-                nacimiento = self.fecha_nacimiento
-
-            hoy = date.today()
-            edad = hoy.year - nacimiento.year
-
-            # Ajustar si aún no ha pasado el cumpleaños este año
-            if (hoy.month, hoy.day) < (nacimiento.month, nacimiento.day):
-                edad -= 1
-
-            return edad
-        except (ValueError, AttributeError):
-            return None
-
-    # ============================================================================
-    # MÉTODOS DE PERSISTENCIA (CRUD) - ¡ESTOS SON LOS QUE FALTAN!
-    # ============================================================================
-
-    def save(self):
-        """Guardar o actualizar el estudiante en la base de datos"""
-        try:
-            from database.database import db
-
-            print(f"DEBUG EstudianteModel.save():")
-            print(
-                f"  - Tipo de operación: {'UPDATE' if hasattr(self, 'id') and self.id else 'INSERT'}"
-            )
-            print(f"  - ID: {getattr(self, 'id', 'Nuevo')}")
-            print(f"  - fotografia_path: {self.fotografia_path}")
-
-            if hasattr(self, "id") and self.id:
-                # ACTUALIZAR registro existente
-                query = f"""
-                    UPDATE {self.TABLE_NAME} 
-                    SET ci_numero = ?, ci_expedicion = ?, nombres = ?, apellidos = ?,
-                        fecha_nacimiento = ?, telefono = ?, email = ?, 
-                        universidad_egreso = ?, profesion = ?, fotografia_path = ?, 
-                        activo = ?
-                    WHERE id = ?
-                """
-                params = (
-                    self.ci_numero,
-                    self.ci_expedicion,
-                    self.nombres,
-                    self.apellidos,
-                    self.fecha_nacimiento,
-                    self.telefono,
-                    self.email,
-                    self.universidad_egreso,
-                    self.profesion,
-                    self.fotografia_path,
-                    self.activo,
-                    self.id,
-                )
-                db.execute(query, params)
-                print(f"  - ✅ UPDATE ejecutado para ID {self.id}")
-
-            else:
-                # INSERTAR nuevo registro
-                query = f"""
-                    INSERT INTO {self.TABLE_NAME} 
-                    (ci_numero, ci_expedicion, nombres, apellidos, fecha_nacimiento,
-                     telefono, email, universidad_egreso, profesion, fotografia_path,
-                     fecha_registro, activo)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """
-                params = (
-                    self.ci_numero,
-                    self.ci_expedicion,
-                    self.nombres,
-                    self.apellidos,
-                    self.fecha_nacimiento,
-                    self.telefono,
-                    self.email,
-                    self.universidad_egreso,
-                    self.profesion,
-                    self.fotografia_path,
-                    self.fecha_registro,
-                    self.activo,
-                )
-                db.execute(query, params)
-                self.id = db.lastrowid
-                print(f"  - ✅ INSERT ejecutado, nuevo ID: {self.id}")
-
-            print(f"  - Guardado exitoso")
-
-        except Exception as e:
-            print(f"❌ ERROR en EstudianteModel.save(): {e}")
-            import traceback
-
-            traceback.print_exc()
-            raise
-
-    @classmethod
-    def find_by_id(cls, estudiante_id: int) -> Optional["EstudianteModel"]:
-        """Buscar estudiante por ID"""
-        try:
-            from database.database import db
-
-            print(f"DEBUG find_by_id: Buscando estudiante ID {estudiante_id}")
-
-            query = f"SELECT * FROM {cls.TABLE_NAME} WHERE id = ?"
-            row = db.fetch_one(query, (estudiante_id,))
-
-            if row:
-                print(f"  - ✅ Estudiante encontrado")
-                return cls(**row)
-            else:
-                print(f"  - ❌ Estudiante no encontrado")
+        # Validar campos requeridos
+        for field in required_fields:
+            if field not in data:
+                print(f"Error: Campo requerido '{field}' no encontrado")
                 return None
 
-        except Exception as e:
-            print(f"ERROR en find_by_id: {e}")
+        try:
+            query = """
+            INSERT INTO estudiantes 
+            (ci, nombre, apellido, email, telefono, direccion, fecha_nacimiento, genero, programa_id, estado) 
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s) 
+            RETURNING id
+            """
+
+            params = (
+                data["ci"],
+                data["nombre"],
+                data["apellido"],
+                data["email"],
+                data.get("telefono", ""),
+                data.get("direccion", ""),
+                data["fecha_nacimiento"],
+                data.get("genero", ""),
+                data.get("programa_id"),
+                data.get("estado", "Activo"),
+            )
+
+            result = self.execute_query(query, params, fetch=True)
+            if result:
+                return result[0]["id"]
             return None
 
-    def contar_activos(self) -> int:
-        """Cuenta estudiantes activos."""
-        try:
-            with self.engine.connect() as conn:
-                query = text(
-                    """
-                    SELECT COUNT(*) as total 
-                    FROM estudiantes 
-                    WHERE activo = TRUE
-                """
-                )
-                result = conn.execute(query)
-                row = result.fetchone()
-                return row["total"] if row and "total" in row else 0
         except Exception as e:
-            self._log_error(f"Error contando estudiantes activos: {e}")
-            return 0
+            print(f"Error creando estudiante: {e}")
+            return None
 
-    def get_all(
-        self, filtros: Optional[Dict[str, Any]] = None, limit: Optional[int] = None
-    ) -> List[Dict[str, Any]]:
+    def read(self, estudiante_id):
         """
-        Obtiene todos los estudiantes con filtros opcionales.
-
+        Obtiene un estudiante por su ID
         Args:
-            filtros: Diccionario con filtros (ej: {'activo': True})
-            limit: Límite de resultados
+            estudiante_id: ID del estudiante
+        Returns:
+            Diccionario con los datos del estudiante o None si no existe
+        """
+        try:
+            query = """
+            SELECT e.*, p.nombre as programa_nombre 
+            FROM estudiantes e 
+            LEFT JOIN programas p ON e.programa_id = p.id 
+            WHERE e.id = %s
+            """
+            result = self.execute_query(query, (estudiante_id,))
+            return result[0] if result else None
+        except Exception as e:
+            print(f"Error leyendo estudiante: {e}")
+            return None
 
+    def update(self, estudiante_id, data):
+        """
+        Actualiza un estudiante existente
+        Args:
+            estudiante_id: ID del estudiante a actualizar
+            data: Diccionario con los datos a actualizar
+        Returns:
+            True si se actualizó correctamente, False en caso contrario
+        """
+        if not data:
+            return False
+
+        try:
+            # Construir la consulta dinámicamente
+            set_clauses = []
+            params = []
+
+            for key, value in data.items():
+                if key != "id":  # No actualizar el ID
+                    set_clauses.append(f"{key} = %s")
+                    params.append(value)
+
+            if not set_clauses:
+                return False
+
+            params.append(estudiante_id)
+            query = f"UPDATE estudiantes SET {', '.join(set_clauses)} WHERE id = %s"
+
+            self.execute_query(query, params, commit=True)
+            return True
+
+        except Exception as e:
+            print(f"Error actualizando estudiante: {e}")
+            return False
+
+    def delete(self, estudiante_id):
+        """
+        Elimina un estudiante (cambia estado a Inactivo)
+        Args:
+            estudiante_id: ID del estudiante
+        Returns:
+            True si se eliminó correctamente, False en caso contrario
+        """
+        try:
+            query = "UPDATE estudiantes SET estado = 'Inactivo' WHERE id = %s"
+            self.execute_query(query, (estudiante_id,), commit=True)
+            return True
+        except Exception as e:
+            print(f"Error eliminando estudiante: {e}")
+            return False
+
+    # ============ MÉTODOS DE CONSULTA ESPECÍFICOS ============
+
+    def get_all(self, estado="Activo", limit=100, offset=0):
+        """
+        Obtiene todos los estudiantes con paginación
+        Args:
+            estado: Filtrar por estado (Activo/Inactivo/Todos)
+            limit: Límite de registros
+            offset: Desplazamiento para paginación
         Returns:
             Lista de estudiantes
         """
         try:
-            with self.engine.connect() as conn:
-                query = f"SELECT * FROM {self.TABLE_NAME} WHERE 1=1"
-                params = {}
-
-                if filtros:
-                    if "activo" in filtros:
-                        query += " AND activo = :activo"
-                        params["activo"] = filtros["activo"]
-
-                query += " ORDER BY apellidos, nombres"
-
-                if limit:
-                    query += f" LIMIT {limit}"
-
-                result = conn.execute(text(query), params)
-                estudiantes = result.fetchall()
-
-                return [dict(estudiante) for estudiante in estudiantes]
-        except Exception as e:
-            self._log_error(f"Error obteniendo estudiantes: {e}")
-            return []
-
-    @classmethod
-    def delete_by_id(cls, estudiante_id: int) -> bool:
-        """Eliminar estudiante por ID"""
-        try:
-            from database.database import db
-
-            query = f"DELETE FROM {cls.TABLE_NAME} WHERE id = ?"
-            db.execute(query, (estudiante_id,))
-
-            return True
-
-        except Exception as e:
-            logger.error(f"Error eliminando estudiante: {e}")
-            return False
-
-    # ============================================================================
-    # MÉTODOS DE BÚSQUEDA
-    # ============================================================================
-
-    @classmethod
-    def get_by_id(cls, estudiante_id):
-        """Obtener estudiante por ID"""
-        try:
-            if hasattr(cls, "query"):
-                return cls.query.get(estudiante_id)
-            elif hasattr(cls, "find_by_id"):
-                return cls.find_by_id(estudiante_id)
+            if estado == "Todos":
+                query = """
+                SELECT e.*, p.nombre as programa_nombre 
+                FROM estudiantes e 
+                LEFT JOIN programas p ON e.programa_id = p.id 
+                ORDER BY e.id DESC 
+                LIMIT %s OFFSET %s
+                """
+                params = (limit, offset)
             else:
-                # Buscar en lista o base de datos según tu implementación
-                pass
+                query = """
+                SELECT e.*, p.nombre as programa_nombre 
+                FROM estudiantes e 
+                LEFT JOIN programas p ON e.programa_id = p.id 
+                WHERE e.estado = %s 
+                ORDER BY e.id DESC 
+                LIMIT %s OFFSET %s
+                """
+                params = (estado, limit, offset)
+
+            return self.execute_query(query, params)
         except Exception as e:
-            logger.error(f"Error en get_by_id: {e}")
-            return None
-
-    @classmethod
-    def buscar_por_ci(
-        cls, ci_numero: str, ci_expedicion: str = None
-    ) -> Optional["EstudianteModel"]:
-        """Busca un estudiante por su CI"""
-        from database.database import db
-
-        if ci_expedicion:
-            query = f"SELECT * FROM {cls.TABLE_NAME} WHERE ci_numero = ? AND ci_expedicion = ?"
-            params = (ci_numero, ci_expedicion)
-        else:
-            query = f"SELECT * FROM {cls.TABLE_NAME} WHERE ci_numero = ?"
-            params = (ci_numero,)
-
-        row = db.fetch_one(query, params)
-        return cls(**row) if row else None
-
-    @classmethod
-    def buscar_por_nombre(cls, texto: str) -> List["EstudianteModel"]:
-        """Buscar estudiantes por nombre o apellido"""
-        from database.database import db
-
-        try:
-            query = f"""
-                SELECT * FROM {cls.TABLE_NAME} 
-                WHERE nombres LIKE ? OR apellidos LIKE ? 
-                ORDER BY apellidos, nombres
-            """
-            parametro = f"%{texto}%"
-            rows = db.fetch_all(query, (parametro, parametro))
-
-            return [cls(**row) for row in rows]
-
-        except Exception as e:
-            logger.error(f"Error en buscar_por_nombre: {e}")
+            print(f"Error obteniendo todos los estudiantes: {e}")
             return []
 
-    @classmethod
-    def buscar_activos(cls) -> List["EstudianteModel"]:
-        """Buscar estudiantes activos"""
-        from database.database import db
-
+    def search(self, search_term, estado="Activo"):
+        """
+        Busca estudiantes por término de búsqueda
+        Args:
+            search_term: Término a buscar (en ci, nombre, apellido, email)
+            estado: Estado de los estudiantes a buscar
+        Returns:
+            Lista de estudiantes que coinciden con la búsqueda
+        """
         try:
-            query = f"""
-                SELECT * FROM {cls.TABLE_NAME} 
-                WHERE activo = 1 
-                ORDER BY apellidos, nombres
-                LIMIT 100
-            """
-            rows = db.fetch_all(query)
+            if estado == "Todos":
+                query = """
+                SELECT e.*, p.nombre as programa_nombre 
+                FROM estudiantes e 
+                LEFT JOIN programas p ON e.programa_id = p.id 
+                WHERE e.ci ILIKE %s OR e.nombre ILIKE %s OR e.apellido ILIKE %s OR e.email ILIKE %s 
+                ORDER BY e.id DESC
+                """
+                params = (
+                    f"%{search_term}%",
+                    f"%{search_term}%",
+                    f"%{search_term}%",
+                    f"%{search_term}%",
+                )
+            else:
+                query = """
+                SELECT e.*, p.nombre as programa_nombre 
+                FROM estudiantes e 
+                LEFT JOIN programas p ON e.programa_id = p.id 
+                WHERE (e.ci ILIKE %s OR e.nombre ILIKE %s OR e.apellido ILIKE %s OR e.email ILIKE %s) 
+                AND e.estado = %s 
+                ORDER BY e.id DESC
+                """
+                params = (
+                    f"%{search_term}%",
+                    f"%{search_term}%",
+                    f"%{search_term}%",
+                    f"%{search_term}%",
+                    estado,
+                )
 
-            return [cls(**row) for row in rows]
-
+            return self.execute_query(query, params)
         except Exception as e:
-            logger.error(f"Error en buscar_activos: {e}")
+            print(f"Error buscando estudiantes: {e}")
             return []
 
-    # ============================================================================
-    # MÉTODOS ESTADÍSTICOS
-    # ============================================================================
+    # ============ MÉTODOS PARA DASHBOARD ============
 
-    @staticmethod
-    def contar_total():
-        """Contar el total de estudiantes registrados"""
+    def get_total_estudiantes(self, estado="Activo"):
+        """
+        Obtiene el total de estudiantes registrados
+        Args:
+            estado: Filtrar por estado (Activo/Inactivo/Todos)
+        Returns:
+            Número total de estudiantes
+        """
         try:
-            from database.database import db
+            if estado == "Todos":
+                query = "SELECT COUNT(*) as total FROM estudiantes"
+                params = ()
+            else:
+                query = "SELECT COUNT(*) as total FROM estudiantes WHERE estado = %s"
+                params = (estado,)
 
-            query = "SELECT COUNT(*) as total FROM estudiantes"
-            resultado = db.fetch_one(query)
-            return resultado["total"] if resultado else 0
-
+            result = self.execute_query(query, params)
+            return result[0]["total"] if result else 0
         except Exception as e:
-            print(f"❌ Error contando estudiantes: {e}")
+            print(f"Error obteniendo total estudiantes: {e}")
             return 0
 
-    @classmethod
-    def obtener_estadisticas(cls) -> Dict[str, Any]:
-        """Obtiene estadísticas de estudiantes"""
-        from database.database import db
+    def get_distribucion_genero(self, estado="Activo"):
+        """
+        Obtiene distribución de estudiantes por género
+        Args:
+            estado: Filtrar por estado
+        Returns:
+            Lista de diccionarios con género y cantidad
+        """
+        try:
+            if estado == "Todos":
+                query = """
+                SELECT 
+                    CASE 
+                        WHEN genero IS NULL OR genero = '' THEN 'No especificado'
+                        ELSE genero 
+                    END as genero,
+                    COUNT(*) as cantidad
+                FROM estudiantes
+                GROUP BY 
+                    CASE 
+                        WHEN genero IS NULL OR genero = '' THEN 'No especificado'
+                        ELSE genero 
+                    END
+                ORDER BY cantidad DESC
+                """
+                params = ()
+            else:
+                query = """
+                SELECT 
+                    CASE 
+                        WHEN genero IS NULL OR genero = '' THEN 'No especificado'
+                        ELSE genero 
+                    END as genero,
+                    COUNT(*) as cantidad
+                FROM estudiantes
+                WHERE estado = %s
+                GROUP BY 
+                    CASE 
+                        WHEN genero IS NULL OR genero = '' THEN 'No especificado'
+                        ELSE genero 
+                    END
+                ORDER BY cantidad DESC
+                """
+                params = (estado,)
 
-        query_total = f"SELECT COUNT(*) as total FROM {cls.TABLE_NAME}"
-        query_activos = (
-            f"SELECT COUNT(*) as activos FROM {cls.TABLE_NAME} WHERE activo = 1"
-        )
+            return self.execute_query(query, params)
+        except Exception as e:
+            print(f"Error obteniendo distribución por género: {e}")
+            return []
 
-        total = db.fetch_one(query_total)["total"]
-        activos = db.fetch_one(query_activos)["activos"]
+    def get_estudiantes_por_programa(self, estado="Activo", limit=10):
+        """
+        Obtiene cantidad de estudiantes por programa
+        Args:
+            estado: Filtrar por estado
+            limit: Límite de programas a mostrar
+        Returns:
+            Lista de diccionarios con programa y cantidad
+        """
+        try:
+            if estado == "Todos":
+                query = """
+                SELECT 
+                    COALESCE(p.nombre, 'Sin programa') as programa,
+                    COUNT(e.id) as cantidad
+                FROM estudiantes e
+                LEFT JOIN programas p ON e.programa_id = p.id
+                GROUP BY p.nombre
+                ORDER BY cantidad DESC
+                LIMIT %s
+                """
+                params = (limit,)
+            else:
+                query = """
+                SELECT 
+                    COALESCE(p.nombre, 'Sin programa') as programa,
+                    COUNT(e.id) as cantidad
+                FROM estudiantes e
+                LEFT JOIN programas p ON e.programa_id = p.id
+                WHERE e.estado = %s
+                GROUP BY p.nombre
+                ORDER BY cantidad DESC
+                LIMIT %s
+                """
+                params = (estado, limit)
 
-        return {
-            "total_estudiantes": total,
-            "estudiantes_activos": activos,
-            "estudiantes_inactivos": total - activos,
-        }
+            return self.execute_query(query, params)
+        except Exception as e:
+            print(f"Error obteniendo estudiantes por programa: {e}")
+            return []
 
-    # ============================================================================
-    # MÉTODOS DE ESTADO
-    # ============================================================================
+    def get_estudiantes_por_rango_edad(self, estado="Activo"):
+        """
+        Obtiene distribución de estudiantes por rango de edad
+        Args:
+            estado: Filtrar por estado
+        Returns:
+            Lista de diccionarios con rango de edad y cantidad
+        """
+        try:
+            if estado == "Todos":
+                query = """
+                SELECT 
+                    CASE 
+                        WHEN EXTRACT(YEAR FROM AGE(fecha_nacimiento)) < 18 THEN 'Menor de 18'
+                        WHEN EXTRACT(YEAR FROM AGE(fecha_nacimiento)) BETWEEN 18 AND 22 THEN '18-22'
+                        WHEN EXTRACT(YEAR FROM AGE(fecha_nacimiento)) BETWEEN 23 AND 30 THEN '23-30'
+                        WHEN EXTRACT(YEAR FROM AGE(fecha_nacimiento)) > 30 THEN 'Mayor de 30'
+                        ELSE 'Edad no especificada'
+                    END as rango_edad,
+                    COUNT(*) as cantidad
+                FROM estudiantes
+                GROUP BY 
+                    CASE 
+                        WHEN EXTRACT(YEAR FROM AGE(fecha_nacimiento)) < 18 THEN 'Menor de 18'
+                        WHEN EXTRACT(YEAR FROM AGE(fecha_nacimiento)) BETWEEN 18 AND 22 THEN '18-22'
+                        WHEN EXTRACT(YEAR FROM AGE(fecha_nacimiento)) BETWEEN 23 AND 30 THEN '23-30'
+                        WHEN EXTRACT(YEAR FROM AGE(fecha_nacimiento)) > 30 THEN 'Mayor de 30'
+                        ELSE 'Edad no especificada'
+                    END
+                ORDER BY cantidad DESC
+                """
+                params = ()
+            else:
+                query = """
+                SELECT 
+                    CASE 
+                        WHEN EXTRACT(YEAR FROM AGE(fecha_nacimiento)) < 18 THEN 'Menor de 18'
+                        WHEN EXTRACT(YEAR FROM AGE(fecha_nacimiento)) BETWEEN 18 AND 22 THEN '18-22'
+                        WHEN EXTRACT(YEAR FROM AGE(fecha_nacimiento)) BETWEEN 23 AND 30 THEN '23-30'
+                        WHEN EXTRACT(YEAR FROM AGE(fecha_nacimiento)) > 30 THEN 'Mayor de 30'
+                        ELSE 'Edad no especificada'
+                    END as rango_edad,
+                    COUNT(*) as cantidad
+                FROM estudiantes
+                WHERE estado = %s
+                GROUP BY 
+                    CASE 
+                        WHEN EXTRACT(YEAR FROM AGE(fecha_nacimiento)) < 18 THEN 'Menor de 18'
+                        WHEN EXTRACT(YEAR FROM AGE(fecha_nacimiento)) BETWEEN 18 AND 22 THEN '18-22'
+                        WHEN EXTRACT(YEAR FROM AGE(fecha_nacimiento)) BETWEEN 23 AND 30 THEN '23-30'
+                        WHEN EXTRACT(YEAR FROM AGE(fecha_nacimiento)) > 30 THEN 'Mayor de 30'
+                        ELSE 'Edad no especificada'
+                    END
+                ORDER BY cantidad DESC
+                """
+                params = (estado,)
 
-    def activar(self):
-        """Activa al estudiante"""
-        self.activo = 1
-        return self.save()
+            return self.execute_query(query, params)
+        except Exception as e:
+            print(f"Error obteniendo distribución por edad: {e}")
+            return []
 
-    def desactivar(self):
-        """Desactiva al estudiante"""
-        self.activo = 0
-        return self.save()
+    def get_estadisticas_mensuales(self, año=None, estado="Activo"):
+        """
+        Obtiene estadísticas mensuales de registros de estudiantes
+        Args:
+            año: Año a consultar (None para año actual)
+            estado: Filtrar por estado
+        Returns:
+            Lista de diccionarios con mes y cantidad de registros
+        """
+        try:
+            if año is None:
+                año = datetime.now().year
 
-    # ============================================================================
-    # MÉTODO DE CREACIÓN CON VALIDACIÓN
-    # ============================================================================
+            if estado == "Todos":
+                query = """
+                SELECT 
+                    EXTRACT(MONTH FROM fecha_registro) as mes,
+                    COUNT(*) as cantidad
+                FROM estudiantes
+                WHERE EXTRACT(YEAR FROM fecha_registro) = %s
+                GROUP BY EXTRACT(MONTH FROM fecha_registro)
+                ORDER BY mes
+                """
+                params = (año,)
+            else:
+                query = """
+                SELECT 
+                    EXTRACT(MONTH FROM fecha_registro) as mes,
+                    COUNT(*) as cantidad
+                FROM estudiantes
+                WHERE EXTRACT(YEAR FROM fecha_registro) = %s AND estado = %s
+                GROUP BY EXTRACT(MONTH FROM fecha_registro)
+                ORDER BY mes
+                """
+                params = (año, estado)
 
-    @classmethod
-    def crear_estudiante(cls, datos: Dict) -> "EstudianteModel":
-        """Crea un nuevo estudiante con validaciones"""
-        # Validaciones específicas
-        if "ci_numero" not in datos or not datos["ci_numero"]:
-            raise ValueError("El número de CI es obligatorio")
+            return self.execute_query(query, params)
+        except Exception as e:
+            print(f"Error obteniendo estadísticas mensuales: {e}")
+            return []
 
-        # Verificar que el CI no exista
-        existente = cls.buscar_por_ci(datos["ci_numero"], datos.get("ci_expedicion"))
-        if existente:
-            raise ValueError(f"Ya existe un estudiante con CI {datos['ci_numero']}")
+    # ============ MÉTODOS DE VALIDACIÓN ============
 
-        # Crear y guardar
-        estudiante = cls(**datos)
-        estudiante.save()
-        return estudiante
+    def ci_exists(self, ci, exclude_id=None):
+        """
+        Verifica si un CI ya existe en la base de datos
+        Args:
+            ci: CI a verificar
+            exclude_id: ID a excluir (para actualizaciones)
+        Returns:
+            True si existe, False en caso contrario
+        """
+        try:
+            if exclude_id:
+                query = "SELECT COUNT(*) as count FROM estudiantes WHERE ci = %s AND id != %s"
+                params = (ci, exclude_id)
+            else:
+                query = "SELECT COUNT(*) as count FROM estudiantes WHERE ci = %s"
+                params = (ci,)
+
+            result = self.execute_query(query, params)
+            return result[0]["count"] > 0 if result else False
+        except Exception as e:
+            print(f"Error verificando CI: {e}")
+            return False
+
+    def email_exists(self, email, exclude_id=None):
+        """
+        Verifica si un email ya existe en la base de datos
+        Args:
+            email: Email a verificar
+            exclude_id: ID a excluir (para actualizaciones)
+        Returns:
+            True si existe, False en caso contrario
+        """
+        try:
+            if exclude_id:
+                query = "SELECT COUNT(*) as count FROM estudiantes WHERE email = %s AND id != %s"
+                params = (email, exclude_id)
+            else:
+                query = "SELECT COUNT(*) as count FROM estudiantes WHERE email = %s"
+                params = (email,)
+
+            result = self.execute_query(query, params)
+            return result[0]["count"] > 0 if result else False
+        except Exception as e:
+            print(f"Error verificando email: {e}")
+            return False
+
+    # ============ MÉTODOS DE COMPATIBILIDAD ============
+
+    def obtener_todos(self):
+        """Método de compatibilidad con nombres antiguos"""
+        return self.get_all()
+
+    def obtener_por_id(self, estudiante_id):
+        """Método de compatibilidad con nombres antiguos"""
+        return self.read(estudiante_id)
+
+    def buscar_estudiantes(self, termino):
+        """Método de compatibilidad con nombres antiguos"""
+        return self.search(termino)
