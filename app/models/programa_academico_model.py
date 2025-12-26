@@ -1,1216 +1,970 @@
-﻿# app/models/programa_academico_model.py
-"""
-Modelo para gestión de programas académicos - FormaGestPro MVC
+﻿# app/models/programas_academicos_model.py - Versión optimizada y robusta
+import sys
+import os
 
-Este modelo maneja todas las operaciones de base de datos relacionadas con programas académicos,
-siguiendo estrictamente el esquema PostgreSQL definido en PgSQL_Scheme.sql y utilizando la
-arquitectura de conexión centralizada a través de BaseModel.
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-Características principales:
-- Totalmente compatible con el esquema PostgreSQL oficial
-- Usa la conexión centralizada mediante BaseModel y connection.py
-- Implementa todas las operaciones CRUD y consultas especializadas
-- Manejo robusto de errores con logging detallado
-- Enumeraciones para los dominios de PostgreSQL
-- Documentación completa en español
-"""
-
-from datetime import datetime, date
-from typing import Optional, List, Dict, Any, Union
-from enum import Enum
 from .base_model import BaseModel
-from sqlalchemy import text
-from sqlalchemy.exc import SQLAlchemyError, IntegrityError
+from datetime import datetime, date
+from decimal import Decimal
+from typing import Optional, List, Dict, Any, Tuple, Union
 
 
-# ============================================================================
-# ENUMERACIONES PARA DOMINIOS DE POSTGRESQL
-# ============================================================================
-
-
-class EstadoPrograma(Enum):
-    """
-    Enumeración que representa el dominio d_estado_programa de PostgreSQL.
-
-    CREATE DOMAIN d_estado_programa AS TEXT
-        CHECK (VALUE IN ('PLANIFICADO', 'INICIADO', 'CONCLUIDO', 'CANCELADO'));
-
-    Esta enumeración asegura la consistencia de datos entre Python y PostgreSQL.
-    """
-
-    PLANIFICADO = "PLANIFICADO"
-    INICIADO = "INICIADO"
-    CONCLUIDO = "CONCLUIDO"
-    CANCELADO = "CANCELADO"
-
-    @classmethod
-    def get_values(cls) -> List[str]:
-        """Retorna la lista de valores válidos."""
-        return [estado.value for estado in cls]
-
-    @classmethod
-    def is_valid(cls, estado: str) -> bool:
-        """Verifica si un estado es válido según el dominio."""
-        try:
-            cls(estado.upper())
-            return True
-        except ValueError:
-            return False
-
-    @classmethod
-    def get_default(cls) -> str:
-        """Retorna el estado por defecto (PLANIFICADO)."""
-        return cls.PLANIFICADO.value
-
-    @classmethod
-    def get_estados_activos(cls) -> List[str]:
-        """Retorna los estados considerados activos."""
-        return [cls.PLANIFICADO.value, cls.INICIADO.value]
-
-
-class ExpedicionCI(Enum):
-    """
-    Enumeración para el dominio d_expedicion_ci.
-
-    CREATE DOMAIN d_expedicion_ci AS TEXT
-        CHECK (VALUE IN ('BE', 'CH', 'CB', 'LP', 'OR', 'PD', 'PT', 'SC', 'TJ', 'EX'));
-    """
-
-    BE = "BE"
-    CH = "CH"
-    CB = "CB"
-    LP = "LP"
-    OR = "OR"
-    PD = "PD"
-    PT = "PT"
-    SC = "SC"
-    TJ = "TJ"
-    EX = "EX"
-
-    @classmethod
-    def is_valid(cls, expedicion: str) -> bool:
-        """Verifica si una expedición es válida."""
-        try:
-            cls(expedicion.upper())
-            return True
-        except ValueError:
-            return False
-
-
-class GradoAcademico(Enum):
-    """
-    Enumeración para el dominio d_grado_academico.
-
-    CREATE DOMAIN d_grado_academico AS TEXT
-        CHECK (VALUE IN ('Mtr.', 'Mgtr.', 'Mag.', 'MBA', 'MSc', 'M.Sc.', 'PhD.', 'Dr.', 'Dra.'));
-    """
-
-    MTR = "Mtr."
-    MGTR = "Mgtr."
-    MAG = "Mag."
-    MBA = "MBA"
-    MSC = "MSc"
-    MSC_PUNTO = "M.Sc."
-    PHD = "PhD."
-    DR = "Dr."
-    DRA = "Dra."
-
-    @classmethod
-    def is_valid(cls, grado: str) -> bool:
-        """Verifica si un grado académico es válido."""
-        try:
-            cls(grado)
-            return True
-        except ValueError:
-            return False
-
-
-# ============================================================================
-# MODELO PRINCIPAL
-# ============================================================================
-
-
-class ProgramaAcademicoModel(BaseModel):
-    """
-    Modelo para operaciones de base de datos de programas académicos.
-
-    Tabla: programas_academicos
-    Esquema: Definido en database/PgSQL_Scheme.sql
-
-    Este modelo proporciona una interfaz completa para gestionar programas académicos
-    manteniendo la integridad referencial y las restricciones definidas en el esquema.
-    """
-
+class ProgramasAcademicosModel(BaseModel):
     def __init__(self):
-        """
-        Inicializa el modelo de programas académicos.
-
-        Configura el nombre de la tabla según el esquema PostgreSQL.
-        """
+        """Inicializa el modelo de programas académicos"""
         super().__init__()
         self.table_name = "programas_academicos"
-        self._setup_cache()
+        self.sequence_name = "seq_programas_academicos_id"
 
-    def _setup_cache(self):
-        """Configura variables de caché para mejorar rendimiento."""
-        self._cache_programas = {}
-        self._cache_codigos = set()
-        self._last_cache_update = None
+        # Estados válidos según el tipo enumerado d_estado_programa
+        self.ESTADOS_PROGRAMA = [
+            "PLANIFICADO",
+            "INSCRIPCIONES",
+            "EN_CURSO",
+            "SUSPENDIDO",
+            "CANCELADO",
+            "FINALIZADO",
+        ]
 
-    def _actualizar_cache(self) -> None:
+        # Columnas de la tabla para validación
+        self.columns = [
+            "id",
+            "codigo",
+            "nombre",
+            "descripcion",
+            "duracion_semanas",
+            "horas_totales",
+            "costo_base",
+            "descuento_contado",
+            "cupos_totales",
+            "cupos_disponibles",
+            "estado",
+            "fecha_inicio_planificada",
+            "fecha_inicio_real",
+            "fecha_fin_real",
+            "tutor_id",
+            "promocion_activa",
+            "descripcion_promocion",
+            "descuento_promocion",
+            "costo_inscripcion",
+            "costo_matricula",
+            "promocion_fecha_limite",
+            "cuotas_mensuales",
+            "dias_entre_cuotas",
+            "created_at",
+            "updated_at",
+        ]
+
+        # Columnas requeridas
+        self.required_columns = ["codigo", "nombre", "costo_base", "cupos_totales"]
+
+        # Columnas de tipo decimal
+        self.decimal_columns = [
+            "costo_base",
+            "descuento_contado",
+            "descuento_promocion",
+            "costo_inscripcion",
+            "costo_matricula",
+        ]
+
+        # Columnas de tipo entero
+        self.integer_columns = [
+            "duracion_semanas",
+            "horas_totales",
+            "cupos_totales",
+            "cupos_disponibles",
+            "tutor_id",
+            "cuotas_mensuales",
+            "dias_entre_cuotas",
+        ]
+
+    # ============ MÉTODOS DE VALIDACIÓN ============
+
+    def _validate_programa_data(
+        self, data: Dict[str, Any], for_update: bool = False
+    ) -> Tuple[bool, str]:
         """
-        Actualiza la caché interna de programas.
-
-        Nota: Se ejecuta automáticamente cuando la caché está desactualizada.
-        """
-        try:
-            programas = self.get_all()
-            self._cache_programas = {p["id"]: p for p in programas}
-            self._cache_codigos = {p["codigo"] for p in programas}
-            self._last_cache_update = datetime.now()
-        except Exception as e:
-            self._log_warning(f"Error al actualizar caché: {e}")
-
-    def _get_from_cache(self, programa_id: int) -> Optional[Dict[str, Any]]:
-        """
-        Obtiene un programa de la caché si está disponible.
+        Valida los datos del programa académico
 
         Args:
-            programa_id (int): ID del programa.
+            data: Diccionario con datos del programa
+            for_update: Si es True, valida para actualización
 
         Returns:
-            Optional[Dict[str, Any]]: Programa desde caché o None.
+            Tuple[bool, str]: (es_válido, mensaje_error)
         """
-        if (
-            self._last_cache_update
-            and (datetime.now() - self._last_cache_update).seconds < 300
-        ):
-            return self._cache_programas.get(programa_id)
-        return None
+        # Campos requeridos para creación
+        if not for_update:
+            for field in self.required_columns:
+                if field not in data or not str(data[field]).strip():
+                    return False, f"Campo requerido faltante: {field}"
 
-    # ============================================================================
-    # MÉTODOS CRUD BÁSICOS - OPTIMIZADOS
-    # ============================================================================
+        # Validar código único si se proporciona
+        if "codigo" in data and data["codigo"]:
+            existing_id = None
+            if for_update and "id" in data:
+                existing_id = data["id"]
 
-    def create(self, datos: Dict[str, Any]) -> Optional[int]:
-        """
-        Crea un nuevo programa académico en la base de datos de forma optimizada.
+            if self.codigo_exists(data["codigo"], exclude_id=existing_id):
+                return False, f"El código {data['codigo']} ya está registrado"
 
-        Args:
-            datos (Dict[str, Any]): Diccionario con los datos del programa.
-
-        Returns:
-            Optional[int]: ID del programa creado si es exitoso, None si falla.
-
-        Raises:
-            ValueError: Si faltan campos requeridos o los datos son inválidos.
-            IntegrityError: Si viola restricciones de integridad (ej: código duplicado).
-        """
-        try:
-            # Validación rápida de campos requeridos
-            campos_requeridos = ["codigo", "nombre", "costo_base", "cupos_totales"]
-            for campo in campos_requeridos:
-                if not datos.get(campo):
-                    raise ValueError(f"Campo requerido faltante: {campo}")
-
-            # Validación de unicidad usando caché primero
-            codigo = datos["codigo"].strip().upper()
-            if codigo in self._cache_codigos or self._existe_codigo(codigo):
-                raise IntegrityError(f"El código '{codigo}' ya existe en el sistema")
-
-            # Normalización y validación de datos
-            datos_normalizados = self._normalizar_datos(datos)
-            datos_completos = self._preparar_datos_creacion(datos_normalizados)
-
-            # Validación de restricciones del esquema
-            self._validar_datos_esquema(datos_completos)
-
-            with self.engine.connect() as conn:
-                # Construir consulta optimizada
-                columnas = ", ".join(datos_completos.keys())
-                marcadores = ", ".join([f":{key}" for key in datos_completos.keys()])
-
-                query = text(
-                    f"""
-                    INSERT INTO {self.table_name} ({columnas})
-                    VALUES ({marcadores})
-                    RETURNING id
-                """
+        # Validar estado si se proporciona
+        if "estado" in data and data["estado"]:
+            if data["estado"] not in self.ESTADOS_PROGRAMA:
+                return (
+                    False,
+                    f"Estado inválido. Use: {', '.join(self.ESTADOS_PROGRAMA)}",
                 )
 
-                # Ejecutar con transacción explícita
-                with conn.begin():
-                    result = conn.execute(query, datos_completos)
-                    programa_id = result.scalar()
+        # Validar fechas si se proporcionan
+        date_fields = [
+            "fecha_inicio_planificada",
+            "fecha_inicio_real",
+            "fecha_fin_real",
+            "promocion_fecha_limite",
+        ]
 
-                # Actualizar caché
-                datos_completos["id"] = programa_id
-                self._cache_programas[programa_id] = datos_completos
-                self._cache_codigos.add(codigo)
-
-                self._log_info(
-                    f"Programa creado exitosamente - ID: {programa_id}, Código: {codigo}"
-                )
-                return programa_id
-
-        except (ValueError, IntegrityError) as e:
-            self._log_error(f"Error de validación/integridad al crear programa: {e}")
-            raise
-        except SQLAlchemyError as e:
-            self._log_error(f"Error de base de datos al crear programa: {e}")
-            return None
-        except Exception as e:
-            self._log_error(f"Error inesperado al crear programa: {e}")
-            return None
-
-    def get_all(
-        self, filtros: Optional[Dict[str, Any]] = None, use_cache: bool = True
-    ) -> List[Dict[str, Any]]:
-        """
-        Obtiene todos los programas académicos con filtrado avanzado.
-
-        Args:
-            filtros (Optional[Dict[str, Any]]): Diccionario con filtros opcionales.
-                Ejemplo: {'estado': 'PLANIFICADO', 'tutor_id': 5, 'promocion_activa': True}
-            use_cache (bool): Usar caché para mejorar rendimiento (default: True).
-
-        Returns:
-            List[Dict[str, Any]]: Lista de programas encontrados, optimizada.
-
-        Performance: Usa caché y consultas parametrizadas para mejor rendimiento.
-        """
-        # Verificar si podemos usar caché
-        if use_cache and filtros is None and self._cache_programas:
-            return list(self._cache_programas.values())
-
-        try:
-            with self.engine.connect() as conn:
-                # Consulta base optimizada con solo campos necesarios
-                campos_base = [
-                    "pa.id",
-                    "pa.codigo",
-                    "pa.nombre",
-                    "pa.descripcion",
-                    "pa.estado",
-                    "pa.costo_base",
-                    "pa.cupos_totales",
-                    "pa.cupos_disponibles",
-                    "pa.fecha_inicio_planificada",
-                    "pa.tutor_id",
-                    "pa.promocion_activa",
-                    "pa.descuento_promocion",
-                ]
-
-                query_parts = [
-                    "SELECT",
-                    ", ".join(campos_base),
-                    f", d.nombres || ' ' || d.apellidos as tutor_nombre_completo",
-                    f"FROM {self.table_name} pa",
-                    "LEFT JOIN docentes d ON pa.tutor_id = d.id",
-                    "WHERE 1=1",
-                ]
-
-                params = {}
-                condiciones = []
-
-                # Construcción dinámica de filtros optimizada
-                if filtros:
-                    condiciones, params = self._construir_filtros_avanzados(filtros)
-
-                if condiciones:
-                    query_parts.append("AND " + " AND ".join(condiciones))
-
-                query_parts.append("ORDER BY pa.estado, pa.codigo, pa.nombre")
-
-                query = text(" ".join(query_parts))
-                result = conn.execute(query, params)
-
-                # Conversión optimizada a diccionarios
-                columnas = result.keys()
-                programas = [
-                    {col: val for col, val in zip(columnas, row)}
-                    for row in result.fetchall()
-                ]
-
-                return programas
-
-        except SQLAlchemyError as e:
-            self._log_error(f"Error de base de datos al obtener programas: {e}")
-            return []
-        except Exception as e:
-            self._log_error(f"Error inesperado al obtener programas: {e}")
-            return []
-
-    def get_by_id(
-        self, programa_id: int, use_cache: bool = True
-    ) -> Optional[Dict[str, Any]]:
-        """
-        Obtiene un programa académico por su ID de forma optimizada.
-
-        Args:
-            programa_id (int): ID del programa a buscar.
-            use_cache (bool): Usar caché para mejorar rendimiento.
-
-        Returns:
-            Optional[Dict[str, Any]]: Datos del programa o None si no existe.
-
-        Performance: Primero intenta obtener de caché, luego de base de datos.
-        """
-        # Intentar obtener de caché primero
-        if use_cache:
-            programa_cache = self._get_from_cache(programa_id)
-            if programa_cache:
-                return programa_cache
-
-        try:
-            with self.engine.connect() as conn:
-                # Consulta específica optimizada
-                query = text(
-                    f"""
-                    SELECT pa.*,
-                           d.nombres || ' ' || d.apellidos as tutor_nombre_completo,
-                           d.email as tutor_email,
-                           d.telefono as tutor_telefono,
-                           d.especialidad as tutor_especialidad
-                    FROM {self.table_name} pa
-                    LEFT JOIN docentes d ON pa.tutor_id = d.id
-                    WHERE pa.id = :programa_id
-                """
-                )
-
-                result = conn.execute(query, {"programa_id": programa_id})
-                row = result.fetchone()
-
-                if row:
-                    programa = dict(row)
-                    # Actualizar caché
-                    if use_cache:
-                        self._cache_programas[programa_id] = programa
-                    return programa
-
-                return None
-
-        except SQLAlchemyError as e:
-            self._log_error(
-                f"Error de base de datos al obtener programa {programa_id}: {e}"
-            )
-            return None
-        except Exception as e:
-            self._log_error(f"Error inesperado al obtener programa {programa_id}: {e}")
-            return None
-
-    def get_by_codigo(self, codigo: str) -> Optional[Dict[str, Any]]:
-        """
-        Obtiene un programa académico por su código único de forma optimizada.
-
-        Args:
-            codigo (str): Código del programa (ej: 'DIP-001').
-
-        Returns:
-            Optional[Dict[str, Any]]: Datos del programa o None si no existe.
-
-        Performance: Usa índice UNIQUE de la base de datos para búsqueda rápida.
-        """
-        try:
-            with self.engine.connect() as conn:
-                query = text(
-                    f"""
-                    SELECT * FROM {self.table_name}
-                    WHERE codigo = :codigo
-                    LIMIT 1
-                """
-                )
-
-                result = conn.execute(query, {"codigo": codigo.strip().upper()})
-                programa = result.fetchone()
-
-                return dict(programa) if programa else None
-
-        except SQLAlchemyError as e:
-            self._log_error(f"Error de base de datos al buscar código '{codigo}': {e}")
-            return None
-
-    def update(self, programa_id: int, datos_actualizacion: Dict[str, Any]) -> bool:
-        """
-        Actualiza los datos de un programa académico existente de forma optimizada.
-
-        Args:
-            programa_id (int): ID del programa a actualizar.
-            datos_actualizacion (Dict[str, Any]): Campos a actualizar.
-
-        Returns:
-            bool: True si la actualización fue exitosa, False en caso contrario.
-
-        Performance: Solo actualiza campos modificados y mantiene caché sincronizada.
-        """
-        try:
-            # Verificar que el programa existe (usando caché si está disponible)
-            programa = self.get_by_id(programa_id, use_cache=True)
-            if not programa:
-                self._log_error(
-                    f"No se puede actualizar - Programa ID {programa_id} no encontrado"
-                )
-                return False
-
-            # Validaciones rápidas
-            if "estado" in datos_actualizacion:
-                estado = datos_actualizacion["estado"]
-                if not EstadoPrograma.is_valid(estado):
-                    raise ValueError(f"Estado inválido: {estado}")
-
-            if "codigo" in datos_actualizacion:
-                nuevo_codigo = datos_actualizacion["codigo"].strip().upper()
-                if nuevo_codigo != programa["codigo"]:
-                    if self._existe_codigo(nuevo_codigo):
-                        raise IntegrityError(
-                            f"Ya existe un programa con código: {nuevo_codigo}"
-                        )
-
-            # Preparar datos para actualización (solo campos modificados)
-            datos_preparados = self._preparar_datos_actualizacion(datos_actualizacion)
-            if not datos_preparados:
-                self._log_info("No hay datos válidos para actualizar")
-                return False
-
-            # Validar restricciones del esquema
-            self._validar_datos_esquema(datos_preparados)
-
-            with self.engine.connect() as conn:
-                # Construir consulta dinámica solo con campos a actualizar
-                set_clause = ", ".join(
-                    [f"{key} = :{key}" for key in datos_preparados.keys()]
-                )
-
-                query = text(
-                    f"""
-                    UPDATE {self.table_name}
-                    SET {set_clause}
-                    WHERE id = :programa_id
-                    RETURNING *
-                """
-                )
-
-                # Agregar ID a los parámetros
-                datos_preparados["programa_id"] = programa_id
-
-                # Ejecutar con transacción
-                with conn.begin():
-                    result = conn.execute(query, datos_preparados)
-                    fila_actualizada = result.fetchone()
-
-                actualizado = fila_actualizada is not None
-
-                if actualizado:
-                    # Actualizar caché
-                    programa_actualizado = dict(fila_actualizada)
-                    self._cache_programas[programa_id] = programa_actualizado
-
-                    if "codigo" in datos_preparados:
-                        self._cache_codigos.discard(programa.get("codigo", ""))
-                        self._cache_codigos.add(datos_preparados["codigo"])
-
-                    self._log_info(
-                        f"Programa ID {programa_id} actualizado exitosamente"
+        for field in date_fields:
+            if field in data and data[field]:
+                if not self._is_valid_date(data[field]):
+                    return (
+                        False,
+                        f"Formato de fecha inválido en {field}. Use YYYY-MM-DD",
                     )
+
+        # Validar descuentos (0-100)
+        if "descuento_contado" in data and data["descuento_contado"] is not None:
+            try:
+                descuento = Decimal(str(data["descuento_contado"]))
+                if descuento < 0 or descuento > 100:
+                    return False, "Descuento contado debe estar entre 0 y 100"
+            except (ValueError, TypeError):
+                return False, "Descuento contado inválido"
+
+        if "descuento_promocion" in data and data["descuento_promocion"] is not None:
+            try:
+                descuento = Decimal(str(data["descuento_promocion"]))
+                if descuento < 0 or descuento > 100:
+                    return False, "Descuento promoción debe estar entre 0 y 100"
+            except (ValueError, TypeError):
+                return False, "Descuento promoción inválido"
+
+        # Validar cupos disponibles <= cupos totales
+        if "cupos_totales" in data and "cupos_disponibles" in data:
+            if (
+                data["cupos_disponibles"] is not None
+                and data["cupos_totales"] is not None
+            ):
+                if data["cupos_disponibles"] > data["cupos_totales"]:
+                    return (
+                        False,
+                        "Cupos disponibles no pueden ser mayores a cupos totales",
+                    )
+
+        # Validar tutor si se proporciona
+        if "tutor_id" in data and data["tutor_id"]:
+            if not self._tutor_exists(data["tutor_id"]):
+                return False, f"Tutor con ID {data['tutor_id']} no existe"
+
+        # Validar costo base positivo
+        if "costo_base" in data and data["costo_base"] is not None:
+            try:
+                costo = Decimal(str(data["costo_base"]))
+                if costo < 0:
+                    return False, "Costo base no puede ser negativo"
+            except (ValueError, TypeError):
+                return False, "Costo base inválido"
+
+        return True, "Datos válidos"
+
+    def _is_valid_date(self, date_value: Any) -> bool:
+        """Valida formato de fecha"""
+        if isinstance(date_value, str):
+            try:
+                datetime.strptime(date_value, "%Y-%m-%d")
+                return True
+            except ValueError:
+                return False
+        elif isinstance(date_value, (datetime, date)):
+            return True
+        return False
+
+    def _tutor_exists(self, tutor_id: int) -> bool:
+        """Verifica si el tutor existe en la tabla docentes"""
+        try:
+            query = (
+                "SELECT COUNT(*) as count FROM docentes WHERE id = %s AND activo = TRUE"
+            )
+            result = self.fetch_one(query, (tutor_id,))
+            return result["count"] > 0 if result else False
+        except:
+            return False
+
+    def _sanitize_data(self, data: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Sanitiza los datos del programa académico
+
+        Args:
+            data: Diccionario con datos crudos
+
+        Returns:
+            Dict[str, Any]: Datos sanitizados
+        """
+        sanitized = {}
+
+        for key, value in data.items():
+            if key in self.columns:
+                # Sanitizar strings
+                if isinstance(value, str):
+                    sanitized[key] = value.strip()
+                # Convertir decimales
+                elif key in self.decimal_columns and value is not None:
+                    try:
+                        sanitized[key] = Decimal(str(value))
+                    except:
+                        sanitized[key] = value
+                # Convertir enteros
+                elif key in self.integer_columns and value is not None:
+                    try:
+                        sanitized[key] = int(value)
+                    except:
+                        sanitized[key] = value
+                # Mantener otros tipos
                 else:
-                    self._log_warning(f"No se actualizó el programa ID {programa_id}")
+                    sanitized[key] = value
 
-                return actualizado
+        return sanitized
 
-        except (ValueError, IntegrityError) as e:
-            self._log_error(f"Error de validación/integridad al actualizar: {e}")
-            return False
-        except SQLAlchemyError as e:
-            self._log_error(
-                f"Error de base de datos al actualizar programa {programa_id}: {e}"
-            )
-            return False
+    # ============ MÉTODOS CRUD PRINCIPALES ============
+
+    def create(self, data: Dict[str, Any]) -> Optional[int]:
+        """
+        Crea un nuevo programa académico
+
+        Args:
+            data: Diccionario con datos del programa
+
+        Returns:
+            Optional[int]: ID del programa creado o None si hay error
+        """
+        # Sanitizar y validar datos
+        data = self._sanitize_data(data)
+        is_valid, error_msg = self._validate_programa_data(data, for_update=False)
+
+        if not is_valid:
+            print(f"✗ Error validando datos: {error_msg}")
+            return None
+
+        try:
+            # Preparar datos para inserción
+            insert_data = data.copy()
+
+            # Establecer valores por defecto
+            defaults = {
+                "estado": "PLANIFICADO",
+                "descuento_contado": Decimal("0"),
+                "cupos_disponibles": insert_data.get("cupos_totales", 0),
+                "promocion_activa": False,
+                "descuento_promocion": Decimal("0"),
+                "costo_inscripcion": Decimal("0"),
+                "costo_matricula": Decimal("0"),
+                "cuotas_mensuales": 1,
+                "dias_entre_cuotas": 30,
+                "created_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                "updated_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            }
+
+            for key, value in defaults.items():
+                if key not in insert_data or insert_data[key] is None:
+                    insert_data[key] = value
+
+            # Insertar en base de datos
+            result = self.insert(self.table_name, insert_data, returning="id")
+
+            if result:
+                print(f"✓ Programa académico creado exitosamente con ID: {result}")
+                return result
+
+            return None
+
         except Exception as e:
-            self._log_error(
-                f"Error inesperado al actualizar programa {programa_id}: {e}"
-            )
+            print(f"✗ Error creando programa académico: {e}")
+            return None
+
+    def read(self, programa_id: int) -> Optional[Dict[str, Any]]:
+        """
+        Obtiene un programa académico por su ID
+
+        Args:
+            programa_id: ID del programa
+
+        Returns:
+            Optional[Dict]: Datos del programa o None si no existe
+        """
+        try:
+            query = f"""
+            SELECT pa.*, 
+                   d.nombres as tutor_nombres, 
+                   d.apellidos as tutor_apellidos,
+                   d.email as tutor_email
+            FROM {self.table_name} pa
+            LEFT JOIN docentes d ON pa.tutor_id = d.id
+            WHERE pa.id = %s
+            """
+            result = self.fetch_one(query, (programa_id,))
+            return result
+
+        except Exception as e:
+            print(f"✗ Error obteniendo programa académico: {e}")
+            return None
+
+    def update(self, programa_id: int, data: Dict[str, Any]) -> bool:
+        """
+        Actualiza un programa académico existente
+
+        Args:
+            programa_id: ID del programa a actualizar
+            data: Diccionario con datos a actualizar
+
+        Returns:
+            bool: True si se actualizó correctamente, False en caso contrario
+        """
+        if not data:
+            return False
+
+        # Añadir ID para validación
+        data_with_id = data.copy()
+        data_with_id["id"] = programa_id
+
+        # Sanitizar y validar datos
+        data = self._sanitize_data(data)
+        is_valid, error_msg = self._validate_programa_data(
+            data_with_id, for_update=True
+        )
+
+        if not is_valid:
+            print(f"✗ Error validando datos: {error_msg}")
+            return False
+
+        try:
+            # Añadir updated_at
+            data["updated_at"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+            # Actualizar en base de datos
+            result = self.update_table(self.table_name, data, "id = %s", (programa_id,))
+
+            if result:
+                print(f"✓ Programa académico {programa_id} actualizado exitosamente")
+                return True
+
+            return False
+
+        except Exception as e:
+            print(f"✗ Error actualizando programa académico: {e}")
             return False
 
     def delete(self, programa_id: int) -> bool:
         """
-        Marca un programa como CANCELADO en lugar de eliminarlo físicamente.
+        Elimina un programa académico (solo si está PLANIFICADO o CANCELADO)
 
         Args:
-            programa_id (int): ID del programa a cancelar.
+            programa_id: ID del programa
 
         Returns:
-            bool: True si la cancelación fue exitosa, False en caso contrario.
-
-        Nota: Según mejores prácticas, no se eliminan datos físicamente.
+            bool: True si se eliminó correctamente, False en caso contrario
         """
         try:
-            datos_cancelacion = {
-                "estado": EstadoPrograma.CANCELADO.value,
-                "updated_at": datetime.now(),
-                "cupos_disponibles": 0,  # Liberar cupos cuando se cancela
-            }
+            # Verificar que el programa pueda ser eliminado
+            programa = self.read(programa_id)
+            if not programa:
+                return False
 
-            return self.update(programa_id, datos_cancelacion)
+            if programa["estado"] not in ["PLANIFICADO", "CANCELADO"]:
+                print(
+                    f"✗ No se puede eliminar programa en estado: {programa['estado']}"
+                )
+                return False
 
-        except Exception as e:
-            self._log_error(f"Error al cancelar programa {programa_id}: {e}")
+            query = f"DELETE FROM {self.table_name} WHERE id = %s"
+            result = self.execute_query(query, (programa_id,), commit=True)
+
+            if result:
+                print(f"✓ Programa académico {programa_id} eliminado exitosamente")
+                return True
+
             return False
 
-    # ============================================================================
-    # MÉTODOS DE CONSULTA ESPECIALIZADA - OPTIMIZADOS
-    # ============================================================================
-
-    def get_all(self, filtros: Optional[Dict[str, Any]] = None) -> List[Dict[str, Any]]:
-        """Obtiene programas con filtros."""
-        try:
-            with self.engine.connect() as conn:
-                query = f"SELECT * FROM {self.table_name} WHERE 1=1"
-                params = {}
-
-                if filtros and "estado" in filtros:
-                    query += " AND estado = :estado"
-                    params["estado"] = filtros["estado"]
-
-                query += " ORDER BY nombre"
-                result = conn.execute(text(query), params)
-                return [dict(row) for row in result.fetchall()]
         except Exception as e:
-            self._log_error(f"Error obteniendo programas: {e}")
-            return []
+            print(f"✗ Error eliminando programa académico: {e}")
+            return False
 
-    def get_activos(self, solo_con_cupos: bool = False) -> List[Dict[str, Any]]:
-        """
-        Obtiene programas activos de forma optimizada.
+    # ============ MÉTODOS DE CONSULTA AVANZADOS ============
 
-        Args:
-            solo_con_cupos (bool): Filtrar solo programas con cupos disponibles.
-
-        Returns:
-            List[Dict[str, Any]]: Programas activos.
-
-        Performance: Usa índices de base de datos para consulta rápida.
-        """
-        filtros = {"estado_in": EstadoPrograma.get_estados_activos()}
-        if solo_con_cupos:
-            filtros["cupos_disponibles_gt"] = 0
-
-        return self.get_all(filtros)
-
-    def get_programas_con_cupos_disponibles(self) -> List[Dict[str, Any]]:
-        """
-        Obtiene programas que tienen cupos disponibles para matrícula.
-
-        Returns:
-            List[Dict[str, Any]]: Programas con cupos disponibles.
-
-        Performance: Consulta específica optimizada con índices.
-        """
-        try:
-            with self.engine.connect() as conn:
-                query = text(
-                    f"""
-                    SELECT pa.*,
-                           d.nombres || ' ' || d.apellidos as tutor_nombre_completo
-                    FROM {self.table_name} pa
-                    LEFT JOIN docentes d ON pa.tutor_id = d.id
-                    WHERE pa.estado IN (:estado1, :estado2)
-                    AND pa.cupos_disponibles > 0
-                    ORDER BY pa.cupos_disponibles DESC, 
-                             pa.fecha_inicio_planificada NULLS LAST
-                    LIMIT 50  -- Límite para rendimiento
-                """
-                )
-
-                result = conn.execute(
-                    query,
-                    {
-                        "estado1": EstadoPrograma.PLANIFICADO.value,
-                        "estado2": EstadoPrograma.INICIADO.value,
-                    },
-                )
-
-                columnas = result.keys()
-                return [
-                    {col: val for col, val in zip(columnas, row)}
-                    for row in result.fetchall()
-                ]
-
-        except SQLAlchemyError as e:
-            self._log_error(f"Error al obtener programas con cupos disponibles: {e}")
-            return []
-
-    def get_programas_con_promociones_activas(self) -> List[Dict[str, Any]]:
-        """
-        Obtiene programas con promociones activas y vigentes.
-
-        Returns:
-            List[Dict[str, Any]]: Programas con promociones vigentes.
-
-        Performance: Incluye verificación de fecha límite.
-        """
-        try:
-            fecha_actual = date.today()
-
-            with self.engine.connect() as conn:
-                query = text(
-                    f"""
-                    SELECT pa.*,
-                           d.nombres || ' ' || d.apellidos as tutor_nombre_completo,
-                           CASE 
-                               WHEN pa.promocion_fecha_limite IS NULL THEN 'SIN_LIMITE'
-                               WHEN pa.promocion_fecha_limite >= :fecha_actual THEN 'VIGENTE'
-                               ELSE 'VENCIDA'
-                           END as estado_promocion
-                    FROM {self.table_name} pa
-                    LEFT JOIN docentes d ON pa.tutor_id = d.id
-                    WHERE pa.promocion_activa = TRUE
-                    AND pa.estado IN (:estado1, :estado2)
-                    AND (pa.promocion_fecha_limite IS NULL 
-                         OR pa.promocion_fecha_limite >= :fecha_actual)
-                    ORDER BY pa.descuento_promocion DESC,
-                             pa.promocion_fecha_limite NULLS FIRST
-                """
-                )
-
-                result = conn.execute(
-                    query,
-                    {
-                        "fecha_actual": fecha_actual,
-                        "estado1": EstadoPrograma.PLANIFICADO.value,
-                        "estado2": EstadoPrograma.INICIADO.value,
-                    },
-                )
-
-                columnas = result.keys()
-                return [
-                    {col: val for col, val in zip(columnas, row)}
-                    for row in result.fetchall()
-                ]
-
-        except SQLAlchemyError as e:
-            self._log_error(f"Error al obtener programas con promociones: {e}")
-            return []
-
-    def get_estadisticas(self) -> Dict[str, Any]:
-        """
-        Obtiene estadísticas generales de todos los programas de forma optimizada.
-
-        Returns:
-            Dict[str, Any]: Estadísticas agregadas de programas.
-
-        Performance: Una sola consulta con agregaciones.
-        """
-        try:
-            with self.engine.connect() as conn:
-                query = text(
-                    f"""
-                    SELECT 
-                        COUNT(*) as total_programas,
-                        COUNT(CASE WHEN estado = :planificado THEN 1 END) as planificados,
-                        COUNT(CASE WHEN estado = :iniciado THEN 1 END) as iniciados,
-                        COUNT(CASE WHEN estado = :concluido THEN 1 END) as concluidos,
-                        COUNT(CASE WHEN estado = :cancelado THEN 1 END) as cancelados,
-                        COALESCE(SUM(cupos_totales), 0) as cupos_totales,
-                        COALESCE(SUM(cupos_disponibles), 0) as cupos_disponibles,
-                        COALESCE(SUM(costo_base), 0) as valor_total_programas,
-                        COALESCE(AVG(duracion_semanas), 0) as duracion_promedio_semanas,
-                        COUNT(DISTINCT tutor_id) as tutores_asignados,
-                        COUNT(CASE WHEN promocion_activa = TRUE THEN 1 END) as promociones_activas,
-                        COALESCE(SUM(cupos_totales - cupos_disponibles), 0) as cupos_ocupados
-                    FROM {self.table_name}
-                """
-                )
-
-                result = conn.execute(
-                    query,
-                    {
-                        "planificado": EstadoPrograma.PLANIFICADO.value,
-                        "iniciado": EstadoPrograma.INICIADO.value,
-                        "concluido": EstadoPrograma.CONCLUIDO.value,
-                        "cancelado": EstadoPrograma.CANCELADO.value,
-                    },
-                )
-
-                row = result.fetchone()
-
-                if row:
-                    estadisticas = dict(row)
-                    total_cupos = estadisticas["cupos_totales"]
-                    cupos_ocupados = estadisticas.get("cupos_ocupados", 0)
-
-                    estadisticas["ocupacion_porcentaje"] = (
-                        (cupos_ocupados / total_cupos * 100) if total_cupos > 0 else 0
-                    )
-
-                    # Calcular estadísticas adicionales
-                    estadisticas["tasa_ocupacion"] = (
-                        estadisticas["ocupacion_porcentaje"] / 100
-                    )
-                    estadisticas["valor_promedio_programa"] = (
-                        estadisticas["valor_total_programas"]
-                        / estadisticas["total_programas"]
-                        if estadisticas["total_programas"] > 0
-                        else 0
-                    )
-
-                    estadisticas["fecha_consulta"] = datetime.now().isoformat()
-                    estadisticas["cache_actualizada"] = (
-                        self._last_cache_update.isoformat()
-                        if self._last_cache_update
-                        else None
-                    )
-
-                    return estadisticas
-                else:
-                    return self._estadisticas_por_defecto()
-
-        except SQLAlchemyError as e:
-            self._log_error(f"Error al obtener estadísticas: {e}")
-            return self._estadisticas_por_defecto()
-
-    def search(
-        self, criterio: str, valor: str, solo_activos: bool = True, limit: int = 50
+    def get_all(
+        self,
+        estado: Optional[str] = None,
+        active_only: bool = True,
+        limit: int = 100,
+        offset: int = 0,
+        order_by: str = "created_at",
+        order_desc: bool = True,
     ) -> List[Dict[str, Any]]:
         """
-        Búsqueda avanzada de programas con múltiples criterios y límite de resultados.
+        Obtiene todos los programas académicos
 
         Args:
-            criterio (str): Campo de búsqueda ('codigo', 'nombre', 'descripcion', 'todos').
-            valor (str): Valor a buscar.
-            solo_activos (bool): Filtrar solo programas activos.
-            limit (int): Límite de resultados para rendimiento.
+            estado: Filtrar por estado específico
+            active_only: Si es True, excluye programas CANCELADOS
+            limit: Límite de registros
+            offset: Desplazamiento para paginación
+            order_by: Campo para ordenar
+            order_desc: Si es True, orden descendente
 
         Returns:
-            List[Dict[str, Any]]: Programas que coinciden con la búsqueda.
-
-        Performance: Incluye límite y uso de índices.
+            List[Dict]: Lista de programas
         """
         try:
-            with self.engine.connect() as conn:
-                # Construir WHERE dinámico
-                where_conditions = self._construir_condiciones_busqueda(criterio, valor)
+            query = f"""
+            SELECT pa.*, 
+                   d.nombres as tutor_nombres, 
+                   d.apellidos as tutor_apellidos
+            FROM {self.table_name} pa
+            LEFT JOIN docentes d ON pa.tutor_id = d.id
+            """
 
-                if solo_activos:
-                    estados_activos = EstadoPrograma.get_estados_activos()
-                    estados_placeholder = ", ".join(
-                        [f"'{estado}'" for estado in estados_activos]
-                    )
-                    where_conditions.append(f"estado IN ({estados_placeholder})")
+            conditions = []
+            params = []
 
-                where_clause = (
-                    "WHERE " + " AND ".join(where_conditions)
-                    if where_conditions
-                    else ""
-                )
+            if estado:
+                conditions.append("pa.estado = %s")
+                params.append(estado)
+            elif active_only:
+                conditions.append("pa.estado != %s")
+                params.append("CANCELADO")
 
-                query = text(
-                    f"""
-                    SELECT * FROM {self.table_name}
-                    {where_clause}
-                    ORDER BY 
-                        CASE 
-                            WHEN nombre ILIKE :exact_match THEN 1
-                            WHEN nombre ILIKE :start_with THEN 2
-                            ELSE 3
-                        END,
-                        codigo, nombre
-                    LIMIT {limit}
-                """
-                )
+            if conditions:
+                query += " WHERE " + " AND ".join(conditions)
 
-                # Parámetros optimizados para búsqueda
-                params = {
-                    "valor": f"%{valor}%",
-                    "exact_match": f"{valor}",
-                    "start_with": f"{valor}%",
-                }
+            # Ordenar
+            order_dir = "DESC" if order_desc else "ASC"
+            query += f" ORDER BY pa.{order_by} {order_dir}"
 
-                result = conn.execute(query, params)
-                columnas = result.keys()
+            # Paginación
+            query += " LIMIT %s OFFSET %s"
+            params.extend([limit, offset])
 
-                return [
-                    {col: val for col, val in zip(columnas, row)}
-                    for row in result.fetchall()
-                ]
+            return self.fetch_all(query, params)
 
-        except SQLAlchemyError as e:
-            self._log_error(
-                f"Error en búsqueda (criterio={criterio}, valor={valor}): {e}"
-            )
+        except Exception as e:
+            print(f"✗ Error obteniendo programas académicos: {e}")
             return []
 
-    def actualizar_cupos_disponibles(
-        self, programa_id: int, cantidad: int = 1, operacion: str = "decrementar"
+    def search(
+        self, search_term: str, estado: Optional[str] = None, active_only: bool = True
+    ) -> List[Dict[str, Any]]:
+        """
+        Busca programas académicos por término de búsqueda
+
+        Args:
+            search_term: Término a buscar
+            estado: Filtrar por estado
+            active_only: Si es True, excluye programas CANCELADOS
+
+        Returns:
+            List[Dict]: Lista de programas que coinciden
+        """
+        try:
+            query = f"""
+            SELECT pa.*, 
+                   d.nombres as tutor_nombres, 
+                   d.apellidos as tutor_apellidos
+            FROM {self.table_name} pa
+            LEFT JOIN docentes d ON pa.tutor_id = d.id
+            WHERE (pa.codigo ILIKE %s 
+                   OR pa.nombre ILIKE %s 
+                   OR pa.descripcion ILIKE %s)
+            """
+
+            params = [f"%{search_term}%", f"%{search_term}%", f"%{search_term}%"]
+
+            if estado:
+                query += " AND pa.estado = %s"
+                params.append(estado)
+            elif active_only:
+                query += " AND pa.estado != %s"
+                params.append("CANCELADO")
+
+            query += " ORDER BY pa.nombre"
+
+            return self.fetch_all(query, params)
+
+        except Exception as e:
+            print(f"✗ Error buscando programas académicos: {e}")
+            return []
+
+    def get_by_estado(self, estado: str) -> List[Dict[str, Any]]:
+        """
+        Obtiene programas académicos por estado
+
+        Args:
+            estado: Estado del programa
+
+        Returns:
+            List[Dict]: Lista de programas con el estado especificado
+        """
+        try:
+            query = f"""
+            SELECT pa.*, 
+                   d.nombres as tutor_nombres, 
+                   d.apellidos as tutor_apellidos
+            FROM {self.table_name} pa
+            LEFT JOIN docentes d ON pa.tutor_id = d.id
+            WHERE pa.estado = %s
+            ORDER BY pa.nombre
+            """
+
+            return self.fetch_all(query, (estado,))
+
+        except Exception as e:
+            print(f"✗ Error obteniendo programas por estado: {e}")
+            return []
+
+    def get_by_tutor(self, tutor_id: int) -> List[Dict[str, Any]]:
+        """
+        Obtiene programas académicos por tutor
+
+        Args:
+            tutor_id: ID del tutor
+
+        Returns:
+            List[Dict]: Lista de programas del tutor
+        """
+        try:
+            query = f"""
+            SELECT pa.*, 
+                   d.nombres as tutor_nombres, 
+                   d.apellidos as tutor_apellidos
+            FROM {self.table_name} pa
+            LEFT JOIN docentes d ON pa.tutor_id = d.id
+            WHERE pa.tutor_id = %s AND pa.estado != 'CANCELADO'
+            ORDER BY pa.estado, pa.nombre
+            """
+
+            return self.fetch_all(query, (tutor_id,))
+
+        except Exception as e:
+            print(f"✗ Error obteniendo programas por tutor: {e}")
+            return []
+
+    def get_with_promocion(self) -> List[Dict[str, Any]]:
+        """
+        Obtiene programas académicos con promoción activa
+
+        Returns:
+            List[Dict]: Lista de programas con promoción
+        """
+        try:
+            query = f"""
+            SELECT pa.*, 
+                   d.nombres as tutor_nombres, 
+                   d.apellidos as tutor_apellidos
+            FROM {self.table_name} pa
+            LEFT JOIN docentes d ON pa.tutor_id = d.id
+            WHERE pa.promocion_activa = TRUE 
+              AND pa.estado != 'CANCELADO'
+              AND (pa.promocion_fecha_limite IS NULL 
+                   OR pa.promocion_fecha_limite >= CURRENT_DATE)
+            ORDER BY pa.descuento_promocion DESC, pa.nombre
+            """
+
+            return self.fetch_all(query)
+
+        except Exception as e:
+            print(f"✗ Error obteniendo programas con promoción: {e}")
+            return []
+
+    # ============ MÉTODOS PARA DASHBOARD ============
+
+    def get_total_programas(self, estado: Optional[str] = None) -> int:
+        """
+        Obtiene el total de programas académicos
+
+        Args:
+            estado: Filtrar por estado específico
+
+        Returns:
+            int: Número total de programas
+        """
+        try:
+            query = f"SELECT COUNT(*) as total FROM {self.table_name}"
+            params = []
+
+            if estado:
+                query += " WHERE estado = %s"
+                params.append(estado)
+
+            result = self.fetch_one(query, params)
+            return result["total"] if result else 0
+
+        except Exception as e:
+            print(f"✗ Error obteniendo total de programas: {e}")
+            return 0
+
+    def get_programas_por_estado(self) -> List[Dict[str, Any]]:
+        """
+        Obtiene distribución de programas por estado
+
+        Returns:
+            List[Dict]: Distribución por estado
+        """
+        try:
+            query = f"""
+            SELECT 
+                estado,
+                COUNT(*) as cantidad,
+                SUM(cupos_totales) as total_cupos,
+                SUM(cupos_disponibles) as cupos_disponibles_total
+            FROM {self.table_name}
+            GROUP BY estado
+            ORDER BY cantidad DESC
+            """
+
+            return self.fetch_all(query)
+
+        except Exception as e:
+            print(f"✗ Error obteniendo programas por estado: {e}")
+            return []
+
+    def get_programas_con_cupos(self, min_cupos: int = 1) -> List[Dict[str, Any]]:
+        """
+        Obtiene programas con cupos disponibles
+
+        Args:
+            min_cupos: Mínimo de cupos disponibles requeridos
+
+        Returns:
+            List[Dict]: Programas con cupos disponibles
+        """
+        try:
+            query = f"""
+            SELECT pa.*, 
+                   d.nombres as tutor_nombres, 
+                   d.apellidos as tutor_apellidos
+            FROM {self.table_name} pa
+            LEFT JOIN docentes d ON pa.tutor_id = d.id
+            WHERE pa.cupos_disponibles >= %s 
+              AND pa.estado IN ('PLANIFICADO', 'INSCRIPCIONES')
+            ORDER BY pa.cupos_disponibles DESC, pa.nombre
+            """
+
+            return self.fetch_all(query, (min_cupos,))
+
+        except Exception as e:
+            print(f"✗ Error obteniendo programas con cupos: {e}")
+            return []
+
+    # ============ MÉTODOS DE GESTIÓN DE ESTADO ============
+
+    def cambiar_estado(self, programa_id: int, nuevo_estado: str) -> bool:
+        """
+        Cambia el estado de un programa académico
+
+        Args:
+            programa_id: ID del programa
+            nuevo_estado: Nuevo estado del programa
+
+        Returns:
+            bool: True si se cambió correctamente
+        """
+        if nuevo_estado not in self.ESTADOS_PROGRAMA:
+            print(f"✗ Estado inválido: {nuevo_estado}")
+            return False
+
+        try:
+            data = {
+                "estado": nuevo_estado,
+                "updated_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            }
+
+            # Si el estado es EN_CURSO y no tiene fecha_inicio_real, establecerla
+            if nuevo_estado == "EN_CURSO":
+                programa = self.read(programa_id)
+                if programa and not programa.get("fecha_inicio_real"):
+                    data["fecha_inicio_real"] = date.today().strftime("%Y-%m-%d")
+
+            # Si el estado es FINALIZADO y no tiene fecha_fin_real, establecerla
+            elif nuevo_estado == "FINALIZADO":
+                programa = self.read(programa_id)
+                if programa and not programa.get("fecha_fin_real"):
+                    data["fecha_fin_real"] = date.today().strftime("%Y-%m-%d")
+
+            return self.update(programa_id, data)
+
+        except Exception as e:
+            print(f"✗ Error cambiando estado del programa: {e}")
+            return False
+
+    def activar_promocion(
+        self,
+        programa_id: int,
+        descripcion: str,
+        descuento: Decimal,
+        fecha_limite: Optional[str] = None,
     ) -> bool:
         """
-        Actualiza los cupos disponibles de un programa de forma segura.
+        Activa una promoción para un programa
 
         Args:
-            programa_id (int): ID del programa.
-            cantidad (int): Cantidad a actualizar.
-            operacion (str): 'incrementar' o 'decrementar'.
+            programa_id: ID del programa
+            descripcion: Descripción de la promoción
+            descuento: Porcentaje de descuento (0-100)
+            fecha_limite: Fecha límite de la promoción (YYYY-MM-DD)
 
         Returns:
-            bool: True si la actualización fue exitosa.
-
-        Performance: Operación atómica con verificación de límites.
+            bool: True si se activó correctamente
         """
         try:
-            with self.engine.connect() as conn:
-                if operacion == "incrementar":
-                    query = text(
-                        f"""
-                        UPDATE {self.table_name}
-                        SET cupos_disponibles = LEAST(cupos_disponibles + :cantidad, cupos_totales),
-                            updated_at = :updated_at
-                        WHERE id = :programa_id
-                        RETURNING cupos_disponibles
-                    """
-                    )
-                else:  # decrementar
-                    query = text(
-                        f"""
-                        UPDATE {self.table_name}
-                        SET cupos_disponibles = GREATEST(cupos_disponibles - :cantidad, 0),
-                            updated_at = :updated_at
-                        WHERE id = :programa_id
-                        AND cupos_disponibles >= :cantidad
-                        RETURNING cupos_disponibles
-                    """
-                    )
+            # Validar descuento
+            descuento_dec = Decimal(str(descuento))
+            if descuento_dec < 0 or descuento_dec > 100:
+                print("✗ Descuento debe estar entre 0 y 100")
+                return False
 
-                result = conn.execute(
-                    query,
-                    {
-                        "programa_id": programa_id,
-                        "cantidad": cantidad,
-                        "updated_at": datetime.now(),
-                    },
-                )
+            data = {
+                "promocion_activa": True,
+                "descripcion_promocion": descripcion,
+                "descuento_promocion": descuento_dec,
+                "updated_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            }
 
-                with conn.begin():
-                    fila_actualizada = result.fetchone()
+            if fecha_limite:
+                if not self._is_valid_date(fecha_limite):
+                    print("✗ Formato de fecha límite inválido")
+                    return False
+                data["promocion_fecha_limite"] = fecha_limite
 
-                actualizado = fila_actualizada is not None
+            return self.update(programa_id, data)
 
-                if actualizado:
-                    # Actualizar caché
-                    if programa_id in self._cache_programas:
-                        self._cache_programas[programa_id]["cupos_disponibles"] = (
-                            fila_actualizada[0]
+        except Exception as e:
+            print(f"✗ Error activando promoción: {e}")
+            return False
+
+    def desactivar_promocion(self, programa_id: int) -> bool:
+        """
+        Desactiva la promoción de un programa
+
+        Args:
+            programa_id: ID del programa
+
+        Returns:
+            bool: True si se desactivó correctamente
+        """
+        try:
+            data = {
+                "promocion_activa": False,
+                "descripcion_promocion": None,
+                "descuento_promocion": Decimal("0"),
+                "promocion_fecha_limite": None,
+                "updated_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            }
+
+            return self.update(programa_id, data)
+
+        except Exception as e:
+            print(f"✗ Error desactivando promoción: {e}")
+            return False
+
+    # ============ MÉTODOS DE GESTIÓN DE CUPOS ============
+
+    def actualizar_cupos_disponibles(self, programa_id: int, cantidad: int) -> bool:
+        """
+        Actualiza los cupos disponibles de un programa
+
+        Args:
+            programa_id: ID del programa
+            cantidad: Cantidad a ajustar (positivo para aumentar, negativo para disminuir)
+
+        Returns:
+            bool: True si se actualizó correctamente
+        """
+        try:
+            programa = self.read(programa_id)
+            if not programa:
+                return False
+
+            nuevos_cupos = programa["cupos_disponibles"] + cantidad
+
+            # Validar que no sea negativo ni mayor al total
+            if nuevos_cupos < 0:
+                print("✗ No hay suficientes cupos disponibles")
+                return False
+
+            if nuevos_cupos > programa["cupos_totales"]:
+                print("✗ Cupos disponibles no pueden ser mayores al total")
+                return False
+
+            data = {
+                "cupos_disponibles": nuevos_cupos,
+                "updated_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            }
+
+            return self.update(programa_id, data)
+
+        except Exception as e:
+            print(f"✗ Error actualizando cupos: {e}")
+            return False
+
+    def reservar_cupo(self, programa_id: int) -> bool:
+        """
+        Reserva un cupo en el programa
+
+        Args:
+            programa_id: ID del programa
+
+        Returns:
+            bool: True si se reservó correctamente
+        """
+        return self.actualizar_cupos_disponibles(programa_id, -1)
+
+    def liberar_cupo(self, programa_id: int) -> bool:
+        """
+        Libera un cupo en el programa
+
+        Args:
+            programa_id: ID del programa
+
+        Returns:
+            bool: True si se liberó correctamente
+        """
+        return self.actualizar_cupos_disponibles(programa_id, 1)
+
+    # ============ MÉTODOS DE CÁLCULO ============
+
+    def calcular_costo_total(
+        self, programa_id: int, pago_contado: bool = False
+    ) -> Dict[str, Decimal]:
+        """
+        Calcula el costo total del programa
+
+        Args:
+            programa_id: ID del programa
+            pago_contado: Si es True, aplica descuento por pago contado
+
+        Returns:
+            Dict: Costos calculados
+        """
+        try:
+            programa = self.read(programa_id)
+            if not programa:
+                return {}
+
+            costo_base = Decimal(str(programa["costo_base"]))
+            costo_inscripcion = Decimal(str(programa["costo_inscripcion"] or 0))
+            costo_matricula = Decimal(str(programa["costo_matricula"] or 0))
+
+            # Calcular descuento a aplicar
+            descuento_aplicar = Decimal("0")
+
+            if programa["promocion_activa"]:
+                # Verificar si la promoción está vigente
+                if programa["promocion_fecha_limite"]:
+                    fecha_limite = datetime.strptime(
+                        programa["promocion_fecha_limite"], "%Y-%m-%d"
+                    ).date()
+                    if date.today() <= fecha_limite:
+                        descuento_aplicar = Decimal(
+                            str(programa["descuento_promocion"] or 0)
                         )
+            elif pago_contado:
+                descuento_aplicar = Decimal(str(programa["descuento_contado"] or 0))
 
-                    self._log_info(
-                        f"Cupos actualizados para programa ID {programa_id} ({operacion}: {cantidad})"
-                    )
+            # Calcular montos
+            subtotal = costo_base + costo_inscripcion + costo_matricula
+            descuento_monto = (subtotal * descuento_aplicar) / 100
+            total = subtotal - descuento_monto
 
-                return actualizado
+            return {
+                "costo_base": costo_base,
+                "costo_inscripcion": costo_inscripcion,
+                "costo_matricula": costo_matricula,
+                "subtotal": subtotal,
+                "descuento_porcentaje": descuento_aplicar,
+                "descuento_monto": descuento_monto,
+                "total": total,
+                "cuota_mensual": (
+                    total / Decimal(str(programa["cuotas_mensuales"]))
+                    if programa["cuotas_mensuales"] > 0
+                    else total
+                ),
+            }
 
-        except SQLAlchemyError as e:
-            self._log_error(
-                f"Error al actualizar cupos del programa {programa_id}: {e}"
-            )
-            return False
+        except Exception as e:
+            print(f"✗ Error calculando costo total: {e}")
+            return {}
 
-    # ============================================================================
-    # MÉTODOS AUXILIARES PRIVADOS - OPTIMIZADOS
-    # ============================================================================
+    # ============ MÉTODOS DE VALIDACIÓN DE UNICIDAD ============
 
-    def _normalizar_datos(self, datos: Dict[str, Any]) -> Dict[str, Any]:
+    def codigo_exists(self, codigo: str, exclude_id: Optional[int] = None) -> bool:
         """
-        Normaliza los datos para consistencia en la base de datos.
+        Verifica si un código ya existe
 
         Args:
-            datos (Dict[str, Any]): Datos crudos.
+            codigo: Código a verificar
+            exclude_id: ID a excluir (para actualizaciones)
 
         Returns:
-            Dict[str, Any]: Datos normalizados.
-        """
-        normalizados = datos.copy()
-
-        # Normalizar strings
-        for campo in ["codigo", "nombre", "descripcion"]:
-            if campo in normalizados and isinstance(normalizados[campo], str):
-                normalizados[campo] = normalizados[campo].strip()
-                if campo == "codigo":
-                    normalizados[campo] = normalizados[campo].upper()
-
-        # Normalizar estados
-        if "estado" in normalizados and isinstance(normalizados["estado"], str):
-            normalizados["estado"] = normalizados["estado"].upper()
-
-        return normalizados
-
-    def _preparar_datos_creacion(self, datos: Dict[str, Any]) -> Dict[str, Any]:
-        """
-        Prepara los datos para la creación de un nuevo programa.
-
-        Args:
-            datos (Dict[str, Any]): Datos normalizados.
-
-        Returns:
-            Dict[str, Any]: Datos preparados con valores por defecto.
-        """
-        datos_preparados = datos.copy()
-
-        # Valores por defecto según esquema
-        defaults = {
-            "estado": EstadoPrograma.get_default(),
-            "descuento_contado": 0.00,
-            "descuento_promocion": 0.00,
-            "costo_inscripcion": 0.00,
-            "costo_matricula": 0.00,
-            "cuotas_mensuales": 1,
-            "dias_entre_cuotas": 30,
-            "promocion_activa": False,
-            "cupos_disponibles": datos.get("cupos_totales", 0),
-            "created_at": datetime.now(),
-            "updated_at": datetime.now(),
-        }
-
-        # Aplicar defaults solo si no están presentes
-        for key, value in defaults.items():
-            if key not in datos_preparados or datos_preparados[key] is None:
-                datos_preparados[key] = value
-
-        # Validar y ajustar cupos_disponibles
-        if "cupos_totales" in datos_preparados:
-            cupos_totales = datos_preparados["cupos_totales"]
-            cupos_disponibles = datos_preparados.get("cupos_disponibles", cupos_totales)
-            datos_preparados["cupos_disponibles"] = min(
-                cupos_disponibles, cupos_totales
-            )
-
-        return datos_preparados
-
-    def _preparar_datos_actualizacion(self, datos: Dict[str, Any]) -> Dict[str, Any]:
-        """
-        Prepara los datos para la actualización de un programa.
-
-        Args:
-            datos (Dict[str, Any]): Datos a actualizar.
-
-        Returns:
-            Dict[str, Any]: Datos preparados para actualización.
-        """
-        # Excluir campos que no se deben actualizar directamente
-        campos_excluidos = ["id", "created_at"]
-
-        datos_preparados = {
-            key: value
-            for key, value in datos.items()
-            if (
-                key not in campos_excluidos and value is not None and value != ""
-            )  # Excluir strings vacíos
-        }
-
-        # Siempre actualizar timestamp
-        if datos_preparados:  # Solo si hay algo que actualizar
-            datos_preparados["updated_at"] = datetime.now()
-
-        return datos_preparados
-
-    def _validar_datos_esquema(self, datos: Dict[str, Any]) -> None:
-        """
-        Valida que los datos cumplan con las restricciones del esquema PostgreSQL.
-
-        Args:
-            datos (Dict[str, Any]): Datos a validar.
-
-        Raises:
-            ValueError: Si los datos no cumplen con las restricciones.
-        """
-        # Validar estado según dominio
-        if "estado" in datos:
-            if not EstadoPrograma.is_valid(datos["estado"]):
-                raise ValueError(
-                    f"Estado inválido: '{datos['estado']}'. "
-                    f"Válidos: {', '.join(EstadoPrograma.get_values())}"
-                )
-
-        # Validar porcentajes de descuento (0-100)
-        for campo_descuento in ["descuento_contado", "descuento_promocion"]:
-            if campo_descuento in datos:
-                descuento = float(datos[campo_descuento])
-                if not (0 <= descuento <= 100):
-                    raise ValueError(
-                        f"{campo_descuento} inválido: {descuento}. Debe estar entre 0 y 100"
-                    )
-
-        # Validar montos positivos
-        campos_monetarios = ["costo_base", "costo_inscripcion", "costo_matricula"]
-        for campo in campos_monetarios:
-            if campo in datos:
-                valor = float(datos[campo])
-                if valor < 0:
-                    raise ValueError(f"{campo} no puede ser negativo: {valor}")
-
-        # Validar cupos
-        if "cupos_totales" in datos:
-            cupos_totales = int(datos["cupos_totales"])
-            if cupos_totales < 0:
-                raise ValueError(
-                    f"cupos_totales no puede ser negativo: {cupos_totales}"
-                )
-
-            if "cupos_disponibles" in datos:
-                cupos_disp = int(datos["cupos_disponibles"])
-                if not (0 <= cupos_disp <= cupos_totales):
-                    raise ValueError(
-                        f"cupos_disponibles ({cupos_disp}) fuera de rango válido: "
-                        f"0 a {cupos_totales}"
-                    )
-
-    def _existe_codigo(self, codigo: str) -> bool:
-        """
-        Verifica si ya existe un programa con el código especificado.
-
-        Args:
-            codigo (str): Código a verificar.
-
-        Returns:
-            bool: True si el código ya existe, False en caso contrario.
-
-        Performance: Consulta rápida usando índice UNIQUE.
+            bool: True si existe, False en caso contrario
         """
         try:
-            with self.engine.connect() as conn:
-                query = text(
-                    f"""
-                    SELECT EXISTS(
-                        SELECT 1 FROM {self.table_name}
-                        WHERE codigo = :codigo
-                        LIMIT 1
-                    ) as existe
-                """
-                )
+            query = f"SELECT COUNT(*) as count FROM {self.table_name} WHERE codigo = %s"
+            params = [codigo]
 
-                result = conn.execute(query, {"codigo": codigo})
-                return bool(result.scalar())
+            if exclude_id is not None:
+                query += " AND id != %s"
+                params.append(exclude_id)  # type: ignore
 
-        except SQLAlchemyError:
+            result = self.fetch_one(query, params)
+            return result["count"] > 0 if result else False
+
+        except Exception as e:
+            print(f"✗ Error verificando código: {e}")
             return False
 
-    def _construir_filtros_avanzados(self, filtros: Dict[str, Any]) -> tuple:
-        """
-        Construye condiciones y parámetros para filtros avanzados.
+    # ============ MÉTODOS DE COMPATIBILIDAD ============
 
-        Args:
-            filtros (Dict[str, Any]): Diccionario de filtros.
+    def obtener_todos(self):
+        """Método de compatibilidad con nombres antiguos"""
+        return self.get_all()
+
+    def obtener_por_id(self, programa_id):
+        """Método de compatibilidad con nombres antiguos"""
+        return self.read(programa_id)
+
+    def buscar_programas(self, termino):
+        """Método de compatibilidad con nombres antiguos"""
+        return self.search(termino)
+
+    def update_table(self, table, data, condition, params=None):
+        """Método helper para actualizar (compatibilidad con BaseModel)"""
+        return self.update(table, data, condition, params)  # type: ignore
+
+    # ============ MÉTODOS DE UTILIDAD ============
+
+    def get_estados_programa(self) -> List[str]:
+        """
+        Obtiene la lista de estados válidos para programas
 
         Returns:
-            tuple: (condiciones, parametros)
+            List[str]: Lista de estados
         """
-        condiciones = []
-        parametros = {}
+        return self.ESTADOS_PROGRAMA.copy()
 
-        mapeo_filtros = {
-            "estado": ("pa.estado = :estado", "estado"),
-            "tutor_id": ("pa.tutor_id = :tutor_id", "tutor_id"),
-            "promocion_activa": (
-                "pa.promocion_activa = :promocion_activa",
-                "promocion_activa",
-            ),
-            "codigo": ("pa.codigo ILIKE :codigo", "codigo"),
-            "nombre": ("pa.nombre ILIKE :nombre", "nombre"),
-            "descripcion": ("pa.descripcion ILIKE :descripcion", "descripcion"),
-            "cupos_disponibles_gt": (
-                "pa.cupos_disponibles > :cupos_disponibles_gt",
-                "cupos_disponibles_gt",
-            ),
-            "costo_base_min": ("pa.costo_base >= :costo_base_min", "costo_base_min"),
-            "costo_base_max": ("pa.costo_base <= :costo_base_max", "costo_base_max"),
-        }
-
-        for filtro, valor in filtros.items():
-            if filtro in mapeo_filtros:
-                condicion, param_key = mapeo_filtros[filtro]
-                condiciones.append(condicion)
-
-                # Manejar patrones LIKE
-                if filtro in ["codigo", "nombre", "descripcion"]:
-                    parametros[param_key] = f"%{valor}%"
-                else:
-                    parametros[param_key] = valor
-
-            # Manejar filtro especial para múltiples estados
-            elif filtro == "estado_in" and isinstance(valor, list):
-                placeholders = ", ".join([f":estado_in_{i}" for i in range(len(valor))])
-                condiciones.append(f"pa.estado IN ({placeholders})")
-                for i, estado in enumerate(valor):
-                    parametros[f"estado_in_{i}"] = estado
-
-        return condiciones, parametros
-
-    def _construir_condiciones_busqueda(self, criterio: str, valor: str) -> List[str]:
+    def get_programas_activos(self) -> List[Dict[str, Any]]:
         """
-        Construye condiciones WHERE optimizadas para búsquedas.
-
-        Args:
-            criterio (str): Tipo de búsqueda.
-            valor (str): Valor a buscar.
+        Obtiene programas activos (no cancelados)
 
         Returns:
-            List[str]: Lista de condiciones SQL optimizadas.
+            List[Dict]: Programas activos
         """
-        if not valor or not valor.strip():
-            return []
-
-        valor = valor.strip()
-
-        # Mapeo de criterios a condiciones optimizadas
-        condiciones_map = {
-            "codigo": [f"codigo ILIKE :valor"],
-            "nombre": [f"nombre ILIKE :valor"],
-            "descripcion": [f"descripcion ILIKE :valor"],
-            "todos": [
-                f"codigo ILIKE :valor",
-                f"nombre ILIKE :valor",
-                f"descripcion ILIKE :valor",
-            ],
-        }
-
-        return condiciones_map.get(criterio, [f"nombre ILIKE :valor"])
-
-    def _estadisticas_por_defecto(self) -> Dict[str, Any]:
-        """
-        Retorna estadísticas por defecto en caso de error.
-
-        Returns:
-            Dict[str, Any]: Estadísticas con valores cero.
-        """
-        return {
-            "total_programas": 0,
-            "planificados": 0,
-            "iniciados": 0,
-            "concluidos": 0,
-            "cancelados": 0,
-            "cupos_totales": 0,
-            "cupos_disponibles": 0,
-            "valor_total_programas": 0.0,
-            "duracion_promedio_semanas": 0.0,
-            "tutores_asignados": 0,
-            "promociones_activas": 0,
-            "cupos_ocupados": 0,
-            "ocupacion_porcentaje": 0.0,
-            "tasa_ocupacion": 0.0,
-            "valor_promedio_programa": 0.0,
-            "fecha_consulta": datetime.now().isoformat(),
-            "cache_actualizada": None,
-        }
-
-    def _log_info(self, mensaje: str) -> None:
-        """Registra mensajes informativos con formato optimizado."""
-        print(f"📝 [{self.__class__.__name__}] {datetime.now():%H:%M:%S} - {mensaje}")
-
-    def _log_error(self, mensaje: str) -> None:
-        """Registra mensajes de error con formato optimizado."""
-        print(
-            f"❌ [{self.__class__.__name__}] {datetime.now():%H:%M:%S} - ERROR: {mensaje}"
-        )
-
-    def _log_warning(self, mensaje: str) -> None:
-        """Registra mensajes de advertencia con formato optimizado."""
-        print(
-            f"⚠️ [{self.__class__.__name__}] {datetime.now():%H:%M:%S} - WARNING: {mensaje}"
-        )
+        return self.get_all(active_only=True)

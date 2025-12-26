@@ -1,54 +1,164 @@
-# app/models/base_model.py - Versión completa con execute_query
+# app/models/base_model.py - Versión corregida
 import sys
 import os
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from database.connection import get_connection
+import psycopg2
+from psycopg2 import pool
+from psycopg2.extras import RealDictCursor
+from app.database.connection import DatabaseConnection
+import threading
 
 
 class BaseModel:
+    """Clase base para todos los modelos que maneja la conexión a la base de datos"""
+
+    # Pool de conexiones para mejor rendimiento
+    _connection_pool = None
+    _pool_lock = threading.Lock()
+
+    @classmethod
+    def _get_connection_pool(cls):
+        """Obtiene o crea el pool de conexiones"""
+        if cls._connection_pool is None:
+            with cls._pool_lock:
+                if cls._connection_pool is None:  # Double-check locking
+                    try:
+                        config = DatabaseConnection.get_connection
+                        cls._connection_pool = pool.SimpleConnectionPool(
+                            minconn=1,
+                            maxconn=10,
+                            host=config.get("host", "localhost"),
+                            database=config.get("database"),
+                            user=config.get("user"),
+                            password=config.get("password"),
+                            port=config.get("port", 5432),
+                        )
+                        print("✓ Pool de conexiones a PostgreSQL creado exitosamente")
+                    except Exception as e:
+                        print(f"✗ Error creando pool de conexiones: {e}")
+                        cls._connection_pool = None
+        return cls._connection_pool
+
+    @classmethod
+    def get_connection(cls):
+        """Obtiene una conexión del pool"""
+        pool = cls._get_connection_pool()
+        if pool:
+            try:
+                connection = pool.getconn()
+                return connection
+            except Exception as e:
+                print(f"✗ Error obteniendo conexión del pool: {e}")
+                return None
+        return None
+
+    @classmethod
+    def return_connection(cls, connection):
+        """Devuelve una conexión al pool"""
+        pool = cls._get_connection_pool()
+        if pool and connection:
+            try:
+                pool.putconn(connection)
+            except Exception as e:
+                print(f"✗ Error devolviendo conexión al pool: {e}")
+
+    @classmethod
+    def close_all_connections(cls):
+        """Cierra todas las conexiones del pool"""
+        if cls._connection_pool:
+            try:
+                cls._connection_pool.closeall()
+                print("✓ Todas las conexiones del pool cerradas")
+            except Exception as e:
+                print(f"✗ Error cerrando conexiones del pool: {e}")
+
     def __init__(self):
-        """Inicializa el modelo base con conexión a la base de datos"""
-        self.connection = get_connection()
+        """Inicializa el modelo base con una conexión a la base de datos"""
+        self.connection = None
         self.cursor = None
+        self._connect()
 
     def __del__(self):
         """Limpia recursos al destruir el objeto"""
-        self.close_cursor()
+        self._close()
 
-    def close_cursor(self):
-        """Cierra el cursor si está abierto"""
-        if self.cursor:
-            self.cursor.close()
+    def _connect(self):
+        """Establece la conexión a la base de datos"""
+        try:
+            self.connection = self.get_connection()
+            if self.connection:
+                # Configurar autocommit como False para manejar transacciones manualmente
+                self.connection.autocommit = False
+                print(
+                    f"✓ Conexión a base de datos establecida para {self.__class__.__name__}"
+                )
+            else:
+                print(
+                    f"✗ No se pudo establecer conexión para {self.__class__.__name__}"
+                )
+        except Exception as e:
+            print(f"✗ Error conectando a la base de datos: {e}")
+            self.connection = None
+
+    def _close(self):
+        """Cierra la conexión y cursor"""
+        try:
+            if self.cursor and not self.cursor.closed:
+                self.cursor.close()
+
+            if self.connection:
+                self.return_connection(self.connection)
+
+        except Exception as e:
+            print(f"✗ Error cerrando recursos: {e}")
+        finally:
             self.cursor = None
+            self.connection = None
 
-    def get_cursor(self):
-        """Obtiene un cursor nuevo si no existe uno activo"""
-        if self.cursor is None or self.cursor.closed:
-            self.cursor = self.connection.cursor()
-        return self.cursor
+    def _get_cursor(self, dict_cursor=False):
+        """Obtiene un cursor nuevo"""
+        if not self.connection:
+            self._connect()
+            if not self.connection:
+                return None
 
-    def execute_query(self, query, params=None, fetch=True, commit=False):
+        try:
+            if dict_cursor:
+                self.cursor = self.connection.cursor(cursor_factory=RealDictCursor)
+            else:
+                self.cursor = self.connection.cursor()
+            return self.cursor
+        except Exception as e:
+            print(f"✗ Error obteniendo cursor: {e}")
+            return None
+
+    def execute_query(
+        self, query, params=None, fetch=True, commit=False, dict_cursor=True
+    ):
         """
         Ejecuta una consulta SQL de forma segura
 
         Args:
             query (str): Consulta SQL a ejecutar
-            params (tuple/list/dict): Parámetros para la consulta
+            params (tuple/list): Parámetros para la consulta
             fetch (bool): Si es True, retorna resultados (para SELECT)
             commit (bool): Si es True, hace commit de la transacción
+            dict_cursor (bool): Si es True, retorna resultados como diccionarios
 
         Returns:
-            - Para SELECT con fetch=True: Lista de diccionarios con resultados
-            - Para SELECT con fetch=False: Cursor para procesamiento manual
-            - Para INSERT/UPDATE/DELETE: Número de filas afectadas o ID si hay RETURNING
+            - Para SELECT: Lista de diccionarios o tuplas con resultados
+            - Para INSERT/UPDATE/DELETE: Número de filas afectadas
+            - Para INSERT con RETURNING: El valor retornado
             - None en caso de error
         """
         cursor = None
         try:
             # Obtener cursor
-            cursor = self.get_cursor()
+            cursor = self._get_cursor(dict_cursor)
+            if not cursor:
+                return None
 
             # Ejecutar consulta
             if params:
@@ -56,43 +166,52 @@ class BaseModel:
             else:
                 cursor.execute(query)
 
-            # Commit si es necesario
-            if commit:
-                self.connection.commit()
-
-            # Procesar resultados según el tipo de consulta
+            # Procesar resultados
             if fetch and cursor.description:  # Es un SELECT que retorna datos
-                # Obtener nombres de columnas
-                columns = [desc[0] for desc in cursor.description]
-
-                # Convertir resultados a lista de diccionarios
                 results = cursor.fetchall()
-                return [dict(zip(columns, row)) for row in results]
 
-            elif (
-                fetch and not cursor.description
-            ):  # Es un SELECT que no retorna datos o es otra operación
-                # Intentar obtener resultado si hay RETURNING
+                if dict_cursor:
+                    return results  # Ya son diccionarios por RealDictCursor
+                else:
+                    # Convertir a lista de diccionarios
+                    columns = [desc[0] for desc in cursor.description]
+                    return [dict(zip(columns, row)) for row in results]
+
+            elif fetch:  # Es un INSERT/UPDATE/DELETE con RETURNING
                 try:
                     result = cursor.fetchone()
                     if result:
-                        return result[0] if len(result) == 1 else result
+                        # Si es diccionario, extraer el valor
+                        if isinstance(result, dict) and len(result) == 1:
+                            return list(result.values())[0]
+                        return result
                 except:
                     pass
 
                 # Retornar número de filas afectadas
-                return cursor.rowcount
+                rowcount = cursor.rowcount
 
-            else:  # No fetch, retornar cursor para procesamiento manual
-                return cursor
+                if commit:
+                    self.commit()
+
+                return rowcount
+
+            else:  # No fetch
+                rowcount = cursor.rowcount
+
+                if commit:
+                    self.commit()
+
+                return rowcount
 
         except Exception as e:
-            print(f"Error ejecutando consulta: {e}")
-            print(f"Consulta: {query}")
-            print(f"Parámetros: {params}")
+            print(f"✗ Error ejecutando consulta: {e}")
+            print(f"  Consulta: {query}")
+            if params:
+                print(f"  Parámetros: {params}")
 
             # Rollback en caso de error
-            if commit:
+            if self.connection:
                 try:
                     self.connection.rollback()
                 except:
@@ -101,37 +220,39 @@ class BaseModel:
             return None
 
         finally:
-            # No cerrar cursor aquí si no se solicitó fetch, para permitir procesamiento posterior
-            if fetch and cursor:
-                cursor.close()
+            # Cerrar cursor
+            if cursor:
+                try:
+                    cursor.close()
+                except:
+                    pass
                 self.cursor = None
 
-    def fetch_one(self, query, params=None):
+    # ============ MÉTODOS CONVENCIONALES ============
+
+    def fetch_one(self, query, params=None, dict_cursor=True):
         """
         Ejecuta una consulta y retorna solo el primer resultado
-
-        Args:
-            query (str): Consulta SQL
-            params (tuple/list/dict): Parámetros
-
-        Returns:
-            Diccionario con el primer resultado o None
         """
-        results = self.execute_query(query, params, fetch=True)
+        results = self.execute_query(query, params, fetch=True, dict_cursor=dict_cursor)
         return results[0] if results else None
 
-    def fetch_all(self, query, params=None):
+    def fetch_all(self, query, params=None, dict_cursor=True):
         """
         Ejecuta una consulta y retorna todos los resultados
-
-        Args:
-            query (str): Consulta SQL
-            params (tuple/list/dict): Parámetros
-
-        Returns:
-            Lista de diccionarios con resultados
         """
-        return self.execute_query(query, params, fetch=True)
+        return self.execute_query(query, params, fetch=True, dict_cursor=dict_cursor)
+
+    def fetch_scalar(self, query, params=None):
+        """
+        Ejecuta una consulta y retorna un solo valor escalar
+        """
+        result = self.fetch_one(query, params, dict_cursor=False)
+        if result:
+            return list(result.values())[0] if isinstance(result, dict) else result[0]
+        return None
+
+    # ============ MÉTODOS CRUD BÁSICOS ============
 
     def insert(self, table, data, returning="id"):
         """
@@ -158,29 +279,21 @@ class BaseModel:
             if returning:
                 query += f" RETURNING {returning}"
 
-            result = self.execute_query(query, values, fetch=True, commit=True)
-
-            if result:
-                return (
-                    result[0]
-                    if isinstance(result, list) and len(result) == 1
-                    else result
-                )
-            return None
+            return self.execute_query(query, values, fetch=True, commit=True)
 
         except Exception as e:
-            print(f"Error insertando en tabla {table}: {e}")
+            print(f"✗ Error insertando en tabla {table}: {e}")
             return None
 
-    def update(self, table, data, where_condition, where_params=None):
+    def update(self, table, data, condition, params=None):
         """
         Actualiza registros en una tabla
 
         Args:
             table (str): Nombre de la tabla
             data (dict): Datos a actualizar (columna: valor)
-            where_condition (str): Condición WHERE
-            where_params (tuple/list): Parámetros para la condición WHERE
+            condition (str): Condición WHERE
+            params (tuple/list): Parámetros adicionales para la condición
 
         Returns:
             Número de filas afectadas o None en caso de error
@@ -190,81 +303,78 @@ class BaseModel:
 
         try:
             set_clause = ", ".join([f"{key} = %s" for key in data.keys()])
-            values = tuple(data.values())
+            set_values = tuple(data.values())
 
-            query = f"UPDATE {table} SET {set_clause} WHERE {where_condition}"
+            query = f"UPDATE {table} SET {set_clause} WHERE {condition}"
 
             # Combinar parámetros
-            if where_params:
-                params = values + tuple(where_params)
+            if params:
+                all_params = set_values + tuple(params)
             else:
-                params = values
+                all_params = set_values
 
-            result = self.execute_query(query, params, fetch=False, commit=True)
-            return result.rowcount if result else 0
+            return self.execute_query(query, all_params, fetch=False, commit=True)
 
         except Exception as e:
-            print(f"Error actualizando tabla {table}: {e}")
+            print(f"✗ Error actualizando tabla {table}: {e}")
             return None
 
-    def delete(self, table, where_condition, where_params=None):
+    def delete(self, table, condition, params=None):
         """
         Elimina registros de una tabla
 
         Args:
             table (str): Nombre de la tabla
-            where_condition (str): Condición WHERE
-            where_params (tuple/list): Parámetros para la condición WHERE
+            condition (str): Condición WHERE
+            params (tuple/list): Parámetros para la condición
 
         Returns:
             Número de filas afectadas o None en caso de error
         """
         try:
-            query = f"DELETE FROM {table} WHERE {where_condition}"
-            result = self.execute_query(query, where_params, fetch=False, commit=True)
-            return result.rowcount if result else 0
+            query = f"DELETE FROM {table} WHERE {condition}"
+            return self.execute_query(query, params, fetch=False, commit=True)
 
         except Exception as e:
-            print(f"Error eliminando de tabla {table}: {e}")
+            print(f"✗ Error eliminando de tabla {table}: {e}")
             return None
+
+    # ============ MÉTODOS DE TRANSACCIÓN ============
 
     def begin_transaction(self):
         """Inicia una transacción"""
         try:
-            self.execute_query("BEGIN", commit=False)
-            return True
+            if self.connection:
+                self.connection.autocommit = False
+                return True
         except Exception as e:
-            print(f"Error iniciando transacción: {e}")
-            return False
+            print(f"✗ Error iniciando transacción: {e}")
+        return False
 
-    def commit_transaction(self):
-        """Confirma una transacción"""
+    def commit(self):
+        """Confirma la transacción actual"""
         try:
-            self.connection.commit()
-            return True
+            if self.connection:
+                self.connection.commit()
+                return True
         except Exception as e:
-            print(f"Error confirmando transacción: {e}")
-            return False
+            print(f"✗ Error confirmando transacción: {e}")
+        return False
 
-    def rollback_transaction(self):
-        """Revierte una transacción"""
+    def rollback(self):
+        """Revierte la transacción actual"""
         try:
-            self.connection.rollback()
-            return True
+            if self.connection:
+                self.connection.rollback()
+                return True
         except Exception as e:
-            print(f"Error revirtiendo transacción: {e}")
-            return False
+            print(f"✗ Error revirtiendo transacción: {e}")
+        return False
+
+    # ============ MÉTODOS DE METADATOS ============
 
     def table_exists(self, table_name):
-        """
-        Verifica si una tabla existe en la base de datos
-
-        Args:
-            table_name (str): Nombre de la tabla
-
-        Returns:
-            bool: True si la tabla existe, False en caso contrario
-        """
+        """Verifica si una tabla existe"""
         try:
             query = """
             SELECT EXISTS (
@@ -273,22 +383,14 @@ class BaseModel:
                 AND table_name = %s
             )
             """
-            result = self.fetch_one(query, (table_name,))
-            return result["exists"] if result else False
+            result = self.fetch_scalar(query, (table_name,))
+            return bool(result)
         except Exception as e:
-            print(f"Error verificando existencia de tabla {table_name}: {e}")
+            print(f"✗ Error verificando existencia de tabla {table_name}: {e}")
             return False
 
     def get_table_columns(self, table_name):
-        """
-        Obtiene las columnas de una tabla
-
-        Args:
-            table_name (str): Nombre de la tabla
-
-        Returns:
-            Lista de nombres de columnas
-        """
+        """Obtiene las columnas de una tabla"""
         try:
             query = """
             SELECT column_name 
@@ -300,5 +402,18 @@ class BaseModel:
             results = self.fetch_all(query, (table_name,))
             return [row["column_name"] for row in results] if results else []
         except Exception as e:
-            print(f"Error obteniendo columnas de tabla {table_name}: {e}")
+            print(f"✗ Error obteniendo columnas de tabla {table_name}: {e}")
             return []
+
+    def get_last_insert_id(self, sequence_name=None):
+        """Obtiene el último ID insertado"""
+        try:
+            if sequence_name:
+                query = f"SELECT last_value FROM {sequence_name}"
+            else:
+                query = "SELECT lastval()"
+
+            return self.fetch_scalar(query)
+        except Exception as e:
+            print(f"✗ Error obteniendo último ID: {e}")
+            return None
