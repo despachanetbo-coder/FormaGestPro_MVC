@@ -1,163 +1,140 @@
-# app/models/docente_model.py - Versión optimizada y robusta
-import sys
-import os
+# app/models/empresa_model.py - VERSIÓN CORREGIDA Y OPTIMIZADA
 
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+"""
+Modelo de Empresa - Gestión de información de la empresa
+Hereda de BaseModel para operaciones de base de datos
+"""
 
-from .base_model import BaseModel
+import logging
+from typing import Dict, List, Optional, Any, Tuple
 from datetime import datetime
 from decimal import Decimal
-from typing import Optional, List, Dict, Any, Tuple, Union
+
+from .base_model import BaseModel
+
+logger = logging.getLogger(__name__)
 
 
-class DocenteModel(BaseModel):
+class EmpresaModel(BaseModel):
+    """Modelo para gestión de información empresarial"""
+
+    # Nombre de la tabla en la base de datos
+    TABLE_NAME = "empresa"
+
+    # Secuencia para IDs autoincrementales
+    SEQUENCE_NAME = "seq_empresa_id"
+
     def __init__(self):
-        """Inicializa el modelo de docentes"""
+        """Inicializa el modelo de empresa"""
         super().__init__()
-        self.table_name = "docentes"
-        self.sequence_name = "seq_docentes_id"
 
-        # Tipos enumerados de la base de datos
-        self.EXPEDICIONES_CI = ["LP", "CB", "SC", "CH", "TA", "PA", "BE", "OR", "PO"]
-        self.GRADOS_ACADEMICOS = [
-            "Licenciatura",
-            "Maestría",
-            "Doctorado",
-            "Especialidad",
-            "Diplomado",
-            "Técnico",
-        ]
-
-        # Columnas de la tabla para validación
+        # Columnas de la tabla para validación y referencia
         self.columns = [
             "id",
-            "ci_numero",
-            "ci_expedicion",
-            "nombres",
-            "apellidos",
-            "fecha_nacimiento",
-            "max_grado_academico",
+            "nombre",
+            "nit",
+            "direccion",
             "telefono",
             "email",
-            "curriculum_path",
-            "especialidad",
-            "honorario_hora",
-            "activo",
+            "logo_path",
             "created_at",
         ]
 
-        # Columnas requeridas
-        self.required_columns = ["ci_numero", "nombres", "apellidos"]
+        # Columnas requeridas para inserción
+        self.required_columns = ["nombre", "nit"]
+
+        # Valores por defecto según la estructura de la tabla
+        self.default_values = {
+            "nombre": "Formación Continua Consultora",
+            "nit": "1234567012",
+        }
+
+        # Configuración inicial de empresa
+        self._empresa_config = None
+        logger.debug(f"✅ EmpresaModel inicializado. Tabla: {self.TABLE_NAME}")
 
     # ============ MÉTODOS DE VALIDACIÓN ============
 
-    def _validate_docente_data(
+    def _validate_empresa_data(
         self, data: Dict[str, Any], for_update: bool = False
     ) -> Tuple[bool, str]:
         """
-        Valida los datos del docente
+        Valida los datos de la empresa antes de operaciones CRUD
 
         Args:
-            data: Diccionario con datos del docente
-            for_update: Si es True, valida para actualización
+            data: Diccionario con datos de la empresa
+            for_update: True si es para actualización, False para creación
 
         Returns:
-            Tuple[bool, str]: (es_válido, mensaje_error)
+            Tuple: (es_válido, mensaje_error)
         """
-        # Campos requeridos para creación
-        if not for_update:
-            for field in self.required_columns:
-                if field not in data or not str(data[field]).strip():
-                    return False, f"Campo requerido faltante: {field}"
+        try:
+            # Validar campos requeridos para creación
+            if not for_update:
+                for field in self.required_columns:
+                    if field not in data or not str(data.get(field, "")).strip():
+                        return False, f"Campo requerido faltante: '{field}'"
 
-        # Validar CI único si se proporciona
-        if "ci_numero" in data and data["ci_numero"]:
-            existing_id = None
-            if for_update and "id" in data:
-                existing_id = data["id"]
+            # Validar NIT (debe ser único)
+            if "nit" in data and data["nit"]:
+                nit = str(data["nit"]).strip()
+                if not nit:
+                    return False, "NIT no puede estar vacío"
 
-            if self.ci_exists(data["ci_numero"], exclude_id=existing_id):
-                return False, f"El CI {data['ci_numero']} ya está registrado"
+                # Verificar unicidad del NIT
+                existing_id = data.get("id") if for_update else None
+                if self.nit_exists(nit, exclude_id=existing_id):
+                    return False, f"El NIT '{nit}' ya está registrado"
 
-        # Validar email único si se proporciona
-        if "email" in data and data["email"]:
-            existing_id = None
-            if for_update and "id" in data:
-                existing_id = data["id"]
+            # Validar email si se proporciona
+            if "email" in data and data["email"]:
+                email = str(data["email"]).strip()
+                if email and "@" not in email:
+                    return False, "Formato de email inválido"
 
-            if self.email_exists(data["email"], exclude_id=existing_id):
-                return False, f"El email {data['email']} ya está registrado"
+            # Validar longitud máxima de campos
+            field_limits = {
+                "nombre": 200,
+                "nit": 20,
+                "direccion": 500,
+                "telefono": 20,
+                "email": 100,
+                "logo_path": 500,
+            }
 
-            # Validar formato de email
-            if not self._is_valid_email(data["email"]):
-                return False, "Formato de email inválido"
+            for field, max_length in field_limits.items():
+                if field in data and data[field]:
+                    value = str(data[field])
+                    if len(value) > max_length:
+                        return (
+                            False,
+                            f"'{field}' excede el límite de {max_length} caracteres",
+                        )
 
-        # Validar formato de fecha si se proporciona
-        if "fecha_nacimiento" in data and data["fecha_nacimiento"]:
-            try:
-                if isinstance(data["fecha_nacimiento"], str):
-                    datetime.strptime(data["fecha_nacimiento"], "%Y-%m-%d")
-            except ValueError:
-                return False, "Formato de fecha inválido. Use YYYY-MM-DD"
+            return True, "Datos válidos"
 
-        # Validar expedición de CI si se proporciona
-        if "ci_expedicion" in data and data["ci_expedicion"]:
-            if data["ci_expedicion"] not in self.EXPEDICIONES_CI:
-                return (
-                    False,
-                    f"Expedición de CI inválida. Use: {', '.join(self.EXPEDICIONES_CI)}",
-                )
-
-        # Validar grado académico si se proporciona
-        if "max_grado_academico" in data and data["max_grado_academico"]:
-            if data["max_grado_academico"] not in self.GRADOS_ACADEMICOS:
-                return (
-                    False,
-                    f"Grado académico inválido. Use: {', '.join(self.GRADOS_ACADEMICOS)}",
-                )
-
-        # Validar honorario por hora si se proporciona
-        if "honorario_hora" in data and data["honorario_hora"] is not None:
-            try:
-                honorario = Decimal(str(data["honorario_hora"]))
-                if honorario < 0:
-                    return False, "El honorario por hora no puede ser negativo"
-            except (ValueError, TypeError):
-                return False, "Honorario por hora inválido. Use un número decimal"
-
-        return True, "Datos válidos"
-
-    def _is_valid_email(self, email: str) -> bool:
-        """Valida formato de email usando regex similar al CHECK constraint de la BD"""
-        import re
-
-        pattern = r"^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$"
-        return bool(re.match(pattern, email, re.IGNORECASE))
+        except Exception as e:
+            logger.error(f"Error en validación de datos de empresa: {e}")
+            return False, f"Error de validación: {str(e)}"
 
     def _sanitize_data(self, data: Dict[str, Any]) -> Dict[str, Any]:
         """
-        Sanitiza los datos del docente
+        Sanitiza y formatea los datos de la empresa
 
         Args:
-            data: Diccionario con datos crudos
+            data: Datos crudos de la empresa
 
         Returns:
-            Dict[str, Any]: Datos sanitizados
+            Diccionario con datos sanitizados
         """
         sanitized = {}
 
         for key, value in data.items():
             if key in self.columns:
-                # Sanitizar strings
+                # Sanitizar strings: eliminar espacios y convertir a string seguro
                 if isinstance(value, str):
                     sanitized[key] = value.strip()
-                # Convertir honorario a Decimal
-                elif key == "honorario_hora" and value is not None:
-                    try:
-                        sanitized[key] = Decimal(str(value))
-                    except:
-                        sanitized[key] = value
-                # Mantener otros tipos
+                # Mantener otros tipos de datos
                 else:
                     sanitized[key] = value
 
@@ -167,713 +144,502 @@ class DocenteModel(BaseModel):
 
     def create(self, data: Dict[str, Any]) -> Optional[int]:
         """
-        Crea un nuevo docente
+        Crea un nuevo registro de empresa
 
         Args:
-            data: Diccionario con datos del docente
+            data: Datos de la empresa a crear
 
         Returns:
-            Optional[int]: ID del docente creado o None si hay error
+            ID del registro creado o None si hay error
         """
-        # Sanitizar y validar datos
-        data = self._sanitize_data(data)
-        is_valid, error_msg = self._validate_docente_data(data, for_update=False)
-
-        if not is_valid:
-            print(f"✗ Error validando datos: {error_msg}")
-            return None
-
         try:
-            # Preparar datos para inserción
-            insert_data = data.copy()
+            # Sanitizar datos
+            data = self._sanitize_data(data)
 
-            # Añadir campos por defecto si no están presentes
-            if "activo" not in insert_data:
-                insert_data["activo"] = True
-            if "created_at" not in insert_data:
-                insert_data["created_at"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            if "honorario_hora" not in insert_data:
-                insert_data["honorario_hora"] = Decimal("0.00")
+            # Aplicar valores por defecto para campos faltantes
+            for field, default_value in self.default_values.items():
+                if field not in data or not data[field]:
+                    data[field] = default_value
 
-            # Insertar en base de datos
-            result = self.insert(self.table_name, insert_data, returning="id")
+            # Validar datos
+            is_valid, error_msg = self._validate_empresa_data(data, for_update=False)
+            if not is_valid:
+                logger.error(
+                    f"❌ Datos inválidos para creación de empresa: {error_msg}"
+                )
+                return None
+
+            # Insertar en la base de datos
+            result = self.insert(self.TABLE_NAME, data, returning="id")
 
             if result:
-                print(f"✓ Docente creado exitosamente con ID: {result}")
+                empresa_id = result[0] if isinstance(result, list) else result
+                logger.info(f"✅ Empresa creada exitosamente con ID: {empresa_id}")
+                return empresa_id
+
+            logger.error("❌ No se pudo crear la empresa (resultado vacío)")
+            return None
+
+        except Exception as e:
+            logger.error(f"❌ Error creando empresa: {e}", exc_info=True)
+            return None
+
+    def read(self, empresa_id: int) -> Optional[Dict[str, Any]]:
+        """
+        Obtiene una empresa por su ID
+
+        Args:
+            empresa_id: ID de la empresa a buscar
+
+        Returns:
+            Diccionario con datos de la empresa o None si no existe
+        """
+        try:
+            query = f"SELECT * FROM {self.TABLE_NAME} WHERE id = %s"
+            result = self.fetch_one(query, (empresa_id,))
+
+            if result:
+                logger.debug(f"✅ Empresa {empresa_id} obtenida correctamente")
                 return result
 
+            logger.warning(f"⚠️  Empresa con ID {empresa_id} no encontrada")
             return None
 
         except Exception as e:
-            print(f"✗ Error creando docente: {e}")
+            logger.error(f"❌ Error obteniendo empresa {empresa_id}: {e}")
             return None
 
-    def read(
-        self, docente_id: int, include_inactive: bool = False
-    ) -> Optional[Dict[str, Any]]:
+    def update(self, empresa_id: int, data: Dict[str, Any]) -> bool:
         """
-        Obtiene un docente por su ID
+        Actualiza los datos de una empresa existente
 
         Args:
-            docente_id: ID del docente
-            include_inactive: Si es True, incluye docentes inactivos
+            empresa_id: ID de la empresa a actualizar
+            data: Datos a actualizar
 
         Returns:
-            Optional[Dict]: Datos del docente o None si no existe
+            True si la actualización fue exitosa, False en caso contrario
         """
         try:
-            query = f"SELECT * FROM {self.table_name} WHERE id = %s"
-            params = (docente_id,)
+            if not data:
+                logger.warning("⚠️  No hay datos para actualizar")
+                return False
 
-            if not include_inactive:
-                query += " AND activo = TRUE"
+            # Verificar que la empresa exista
+            existing = self.read(empresa_id)
+            if not existing:
+                logger.error(
+                    f"❌ No se puede actualizar: empresa {empresa_id} no existe"
+                )
+                return False
 
-            result = self.fetch_one(query, params)
-            return result
+            # Sanitizar datos
+            data = self._sanitize_data(data)
 
-        except Exception as e:
-            print(f"✗ Error obteniendo docente: {e}")
-            return None
+            # Añadir ID para validación de unicidad
+            data_with_id = data.copy()
+            data_with_id["id"] = empresa_id
 
-    def update(self, docente_id: int, data: Dict[str, Any]) -> bool:
-        """
-        Actualiza un docente existente
+            # Validar datos
+            is_valid, error_msg = self._validate_empresa_data(
+                data_with_id, for_update=True
+            )
+            if not is_valid:
+                logger.error(f"❌ Datos inválidos para actualización: {error_msg}")
+                return False
 
-        Args:
-            docente_id: ID del docente a actualizar
-            data: Diccionario con datos a actualizar
-
-        Returns:
-            bool: True si se actualizó correctamente, False en caso contrario
-        """
-        if not data:
-            return False
-
-        # Añadir ID para validación
-        data_with_id = data.copy()
-        data_with_id["id"] = docente_id
-
-        # Sanitizar y validar datos
-        data = self._sanitize_data(data)
-        is_valid, error_msg = self._validate_docente_data(data_with_id, for_update=True)
-
-        if not is_valid:
-            print(f"✗ Error validando datos: {error_msg}")
-            return False
-
-        try:
-            # Actualizar en base de datos
+            # Actualizar en la base de datos
             result = self.update_table(
-                self.table_name, data, f"id = %s AND activo = TRUE", (docente_id,)
+                table=self.TABLE_NAME,
+                data=data,
+                condition="id = %s",
+                params=(empresa_id,),
             )
 
-            if result:
-                print(f"✓ Docente {docente_id} actualizado exitosamente")
+            if result and result > 0:
+                logger.info(f"✅ Empresa {empresa_id} actualizada exitosamente")
                 return True
 
+            logger.warning(f"⚠️  No se actualizaron registros para empresa {empresa_id}")
             return False
 
         except Exception as e:
-            print(f"✗ Error actualizando docente: {e}")
+            logger.error(
+                f"❌ Error actualizando empresa {empresa_id}: {e}", exc_info=True
+            )
             return False
 
-    def delete(self, docente_id: int, soft_delete: bool = True) -> bool:
+    def delete(self, empresa_id: int) -> bool:
         """
-        Elimina un docente
+        Elimina una empresa (¡CUIDADO! Esta operación es permanente)
 
         Args:
-            docente_id: ID del docente
-            soft_delete: Si es True, marca como inactivo en lugar de eliminar físicamente
+            empresa_id: ID de la empresa a eliminar
 
         Returns:
-            bool: True si se eliminó correctamente, False en caso contrario
+            True si la eliminación fue exitosa, False en caso contrario
         """
         try:
-            if soft_delete:
-                # Soft delete: marcar como inactivo
-                query = f"UPDATE {self.table_name} SET activo = FALSE WHERE id = %s"
-                params = (docente_id,)
-            else:
-                # Hard delete: eliminar físicamente
-                query = f"DELETE FROM {self.table_name} WHERE id = %s"
-                params = (docente_id,)
+            # Verificar que la empresa exista
+            existing = self.read(empresa_id)
+            if not existing:
+                logger.error(f"❌ No se puede eliminar: empresa {empresa_id} no existe")
+                return False
 
-            result = self.execute_query(query, params, commit=True)
+            # Eliminar de la base de datos
+            query = f"DELETE FROM {self.TABLE_NAME} WHERE id = %s"
+            result = self.execute_query(query, (empresa_id,), commit=True)
 
-            if result:
-                delete_type = "desactivado" if soft_delete else "eliminado"
-                print(f"✓ Docente {docente_id} {delete_type} exitosamente")
+            if result and result > 0:
+                logger.warning(f"⚠️  Empresa {empresa_id} eliminada permanentemente")
                 return True
 
+            logger.warning(f"⚠️  No se eliminó la empresa {empresa_id}")
             return False
 
         except Exception as e:
-            print(f"✗ Error eliminando docente: {e}")
+            logger.error(f"❌ Error eliminando empresa {empresa_id}: {e}")
             return False
 
-    # ============ MÉTODOS DE CONSULTA AVANZADOS ============
+    # ============ MÉTODOS DE CONSULTA ESPECÍFICOS ============
 
-    def get_all(
-        self,
-        active_only: bool = True,
-        limit: int = 100,
-        offset: int = 0,
-        order_by: str = "apellidos",
-        order_desc: bool = False,
-    ) -> List[Dict[str, Any]]:
+    def get_datos_empresa(self) -> Dict[str, Any]:
         """
-        Obtiene todos los docentes con paginación
-
-        Args:
-            active_only: Si es True, solo docentes activos
-            limit: Límite de registros
-            offset: Desplazamiento para paginación
-            order_by: Campo para ordenar
-            order_desc: Si es True, orden descendente
+        Obtiene los datos de la empresa principal
 
         Returns:
-            List[Dict]: Lista de docentes
+            Diccionario con datos de la empresa o valores por defecto
         """
         try:
-            query = f"SELECT * FROM {self.table_name}"
-            params = []
-
-            # Filtrar por estado activo
-            if active_only:
-                query += " WHERE activo = TRUE"
-
-            # Ordenar
-            order_dir = "DESC" if order_desc else "ASC"
-            query += f" ORDER BY {order_by} {order_dir}, nombres ASC"
-
-            # Paginación
-            query += " LIMIT %s OFFSET %s"
-            params.extend([limit, offset])
-
-            return self.fetch_all(query, params)
-
-        except Exception as e:
-            print(f"✗ Error obteniendo docentes: {e}")
-            return []
-
-    def search(
-        self,
-        search_term: str,
-        active_only: bool = True,
-        search_fields: Optional[List[str]] = None,
-    ) -> List[Dict[str, Any]]:
-        """
-        Busca docentes por término de búsqueda
-
-        Args:
-            search_term: Término a buscar
-            active_only: Si es True, solo docentes activos
-            search_fields: Campos donde buscar (None para todos los campos de texto)
-
-        Returns:
-            List[Dict]: Lista de docentes que coinciden
-        """
-        try:
-            if search_fields is None:
-                search_fields = [
-                    "ci_numero",
-                    "nombres",
-                    "apellidos",
-                    "email",
-                    "telefono",
-                    "especialidad",
-                    "max_grado_academico",
-                ]
-
-            # Construir condiciones de búsqueda
-            conditions = []
-            params = []
-
-            for field in search_fields:
-                conditions.append(f"{field} ILIKE %s")
-                params.append(f"%{search_term}%")
-
-            where_clause = " OR ".join(conditions)
-
-            query = f"SELECT * FROM {self.table_name} WHERE ({where_clause})"
-
-            if active_only:
-                query += " AND activo = TRUE"
-
-            query += " ORDER BY apellidos, nombres"
-
-            return self.fetch_all(query, params)
-
-        except Exception as e:
-            print(f"✗ Error buscando docentes: {e}")
-            return []
-
-    def get_by_ci(
-        self, ci_numero: str, active_only: bool = True
-    ) -> Optional[Dict[str, Any]]:
-        """
-        Obtiene un docente por su número de CI
-
-        Args:
-            ci_numero: Número de CI
-            active_only: Si es True, solo docentes activos
-
-        Returns:
-            Optional[Dict]: Datos del docente o None
-        """
-        try:
-            query = f"SELECT * FROM {self.table_name} WHERE ci_numero = %s"
-            params = (ci_numero,)
-
-            if active_only:
-                query += " AND activo = TRUE"
-
-            return self.fetch_one(query, params)
-
-        except Exception as e:
-            print(f"✗ Error obteniendo docente por CI: {e}")
-            return None
-
-    def get_by_email(
-        self, email: str, active_only: bool = True
-    ) -> Optional[Dict[str, Any]]:
-        """
-        Obtiene un docente por su email
-
-        Args:
-            email: Email del docente
-            active_only: Si es True, solo docentes activos
-
-        Returns:
-            Optional[Dict]: Datos del docente o None
-        """
-        try:
-            query = f"SELECT * FROM {self.table_name} WHERE email = %s"
-            params = (email,)
-
-            if active_only:
-                query += " AND activo = TRUE"
-
-            return self.fetch_one(query, params)
-
-        except Exception as e:
-            print(f"✗ Error obteniendo docente por email: {e}")
-            return None
-
-    def get_by_especialidad(
-        self, especialidad: str, active_only: bool = True
-    ) -> List[Dict[str, Any]]:
-        """
-        Obtiene docentes por especialidad
-
-        Args:
-            especialidad: Especialidad a buscar
-            active_only: Si es True, solo docentes activos
-
-        Returns:
-            List[Dict]: Lista de docentes con la especialidad
-        """
-        try:
-            query = f"SELECT * FROM {self.table_name} WHERE especialidad ILIKE %s"
-            params = (f"%{especialidad}%",)
-
-            if active_only:
-                query += " AND activo = TRUE"
-
-            query += " ORDER BY apellidos, nombres"
-
-            return self.fetch_all(query, params)
-
-        except Exception as e:
-            print(f"✗ Error obteniendo docentes por especialidad: {e}")
-            return []
-
-    def get_by_grado_academico(
-        self, grado_academico: str, active_only: bool = True
-    ) -> List[Dict[str, Any]]:
-        """
-        Obtiene docentes por grado académico
-
-        Args:
-            grado_academico: Grado académico a buscar
-            active_only: Si es True, solo docentes activos
-
-        Returns:
-            List[Dict]: Lista de docentes con el grado académico
-        """
-        try:
-            query = f"SELECT * FROM {self.table_name} WHERE max_grado_academico = %s"
-            params = (grado_academico,)
-
-            if active_only:
-                query += " AND activo = TRUE"
-
-            query += " ORDER BY apellidos, nombres"
-
-            return self.fetch_all(query, params)
-
-        except Exception as e:
-            print(f"✗ Error obteniendo docentes por grado académico: {e}")
-            return []
-
-    # ============ MÉTODOS PARA DASHBOARD ============
-
-    def get_total_docentes(self, active_only: bool = True) -> int:
-        """
-        Obtiene el total de docentes
-
-        Args:
-            active_only: Si es True, solo docentes activos
-
-        Returns:
-            int: Número total de docentes
-        """
-        try:
-            query = f"SELECT COUNT(*) as total FROM {self.table_name}"
-            params = []
-
-            if active_only:
-                query += " WHERE activo = TRUE"
-
-            result = self.fetch_one(query, params)
-            return result["total"] if result else 0
-
-        except Exception as e:
-            print(f"✗ Error obteniendo total de docentes: {e}")
-            return 0
-
-    def get_distribucion_genero(self) -> List[Dict[str, Any]]:
-        """
-        Obtiene distribución de docentes por género
-        Nota: Esta función necesita que la tabla tenga una columna 'genero'
-
-        Returns:
-            List[Dict]: Distribución por género
-        """
-        try:
-            # Verificar si existe la columna genero
-            table_columns = self.get_table_columns(self.table_name)
-
-            if "genero" not in table_columns:
-                print("⚠ La tabla docentes no tiene columna 'genero'")
-                return []
-
-            query = """
-            SELECT 
-                CASE 
-                    WHEN genero IS NULL OR genero = '' THEN 'No especificado'
-                    ELSE genero 
-                END as genero,
-                COUNT(*) as cantidad
-            FROM docentes
-            WHERE activo = TRUE
-            GROUP BY 
-                CASE 
-                    WHEN genero IS NULL OR genero = '' THEN 'No especificado'
-                    ELSE genero 
-                END
-            ORDER BY cantidad DESC
-            """
-
-            return self.fetch_all(query)
-
-        except Exception as e:
-            print(f"✗ Error obteniendo distribución por género: {e}")
-            return []
-
-    def get_docentes_por_departamento(self, limit: int = 10) -> List[Dict[str, Any]]:
-        """
-        Obtiene cantidad de docentes por departamento
-        Nota: Esto asume que hay una tabla 'departamentos' y relación con docentes
-
-        Returns:
-            List[Dict]: Docentes por departamento
-        """
-        try:
-            query = """
-            SELECT 
-                COALESCE(d.nombre, 'Sin departamento') as departamento,
-                COUNT(doc.id) as cantidad
-            FROM docentes doc
-            LEFT JOIN departamentos d ON doc.departamento_id = d.id
-            WHERE doc.activo = TRUE
-            GROUP BY d.nombre
-            ORDER BY cantidad DESC
-            LIMIT %s
-            """
-
-            return self.fetch_all(query, (limit,))
-
-        except Exception as e:
-            print(f"✗ Error obteniendo docentes por departamento: {e}")
-            return []
-
-    def get_estadisticas_honorarios(self) -> Dict[str, Any]:
-        """
-        Obtiene estadísticas de honorarios de docentes
-
-        Returns:
-            Dict: Estadísticas de honorarios
-        """
-        try:
-            query = """
-            SELECT 
-                COUNT(*) as total_docentes,
-                AVG(honorario_hora) as honorario_promedio,
-                MIN(honorario_hora) as honorario_minimo,
-                MAX(honorario_hora) as honorario_maximo,
-                SUM(honorario_hora) as honorario_total
-            FROM docentes
-            WHERE activo = TRUE AND honorario_hora > 0
-            """
-
+            # Intentar obtener la primera empresa registrada
+            query = f"SELECT * FROM {self.TABLE_NAME} ORDER BY id LIMIT 1"
             result = self.fetch_one(query)
+
             if result:
-                # Convertir Decimal a float para serialización
-                return {
-                    "total_docentes": result["total_docentes"],
-                    "honorario_promedio": (
-                        float(result["honorario_promedio"])
-                        if result["honorario_promedio"]
-                        else 0.0
-                    ),
-                    "honorario_minimo": (
-                        float(result["honorario_minimo"])
-                        if result["honorario_minimo"]
-                        else 0.0
-                    ),
-                    "honorario_maximo": (
-                        float(result["honorario_maximo"])
-                        if result["honorario_maximo"]
-                        else 0.0
-                    ),
-                    "honorario_total": (
-                        float(result["honorario_total"])
-                        if result["honorario_total"]
-                        else 0.0
-                    ),
-                }
+                logger.debug("✅ Datos de empresa obtenidos de la base de datos")
+                return result
 
-            return {}
+            # Si no hay empresa registrada, devolver valores por defecto
+            logger.warning("⚠️  No hay empresa registrada, usando valores por defecto")
+            return {
+                "id": None,
+                "nombre": self.default_values["nombre"],
+                "nit": self.default_values["nit"],
+                "direccion": "No especificada",
+                "telefono": "No especificado",
+                "email": "info@formacioncontinua.com",
+                "logo_path": None,
+                "created_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            }
 
         except Exception as e:
-            print(f"✗ Error obteniendo estadísticas de honorarios: {e}")
-            return {}
+            logger.error(f"❌ Error obteniendo datos de empresa: {e}")
+            # Devolver valores por defecto en caso de error
+            return {
+                "id": None,
+                "nombre": self.default_values["nombre"],
+                "nit": self.default_values["nit"],
+                "direccion": "Error al cargar datos",
+                "telefono": "N/A",
+                "email": "error@empresa.com",
+                "logo_path": None,
+                "created_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            }
 
-    def get_docentes_por_grado_academico(self) -> List[Dict[str, Any]]:
+    def get_configuracion(self) -> Dict[str, Any]:
         """
-        Obtiene distribución de docentes por grado académico
+        Obtiene la configuración de la empresa para el sistema
 
         Returns:
-            List[Dict]: Distribución por grado académico
+            Diccionario con configuración del sistema
         """
         try:
-            query = """
-            SELECT 
-                COALESCE(max_grado_academico, 'No especificado') as grado_academico,
-                COUNT(*) as cantidad
-            FROM docentes
-            WHERE activo = TRUE
-            GROUP BY max_grado_academico
-            ORDER BY cantidad DESC
-            """
+            empresa_data = self.get_datos_empresa()
 
-            return self.fetch_all(query)
+            # Configuración por defecto del sistema
+            config = {
+                # Información de la empresa
+                "empresa_nombre": empresa_data.get(
+                    "nombre", self.default_values["nombre"]
+                ),
+                "empresa_nit": empresa_data.get("nit", self.default_values["nit"]),
+                "empresa_direccion": empresa_data.get("direccion", "No especificada"),
+                "empresa_telefono": empresa_data.get("telefono", "No especificado"),
+                "empresa_email": empresa_data.get(
+                    "email", "info@formacioncontinua.com"
+                ),
+                "empresa_logo": empresa_data.get("logo_path"),
+                # Configuración del sistema
+                "moneda": "USD",  # Moneda por defecto
+                "iva": Decimal("16.00"),  # IVA por defecto 16%
+                "retencion_iva": Decimal("75.00"),  # Retención IVA 75%
+                "retencion_islr": Decimal("1.00"),  # Retención ISLR 1%
+                "formato_fecha": "dd/MM/yyyy",  # Formato de fecha
+                "formato_hora": "HH:mm:ss",  # Formato de hora
+                "paginacion_registros": 20,  # Registros por página
+                # Información de contacto soporte
+                "soporte_email": "soporte@formacioncontinua.com",
+                "soporte_telefono": "+58 212-1234567",
+                "soporte_horario": "Lunes a Viernes 8:00 AM - 5:00 PM",
+            }
+
+            logger.debug("✅ Configuración de empresa obtenida")
+            return config
 
         except Exception as e:
-            print(f"✗ Error obteniendo docentes por grado académico: {e}")
-            return []
+            logger.error(f"❌ Error obteniendo configuración: {e}")
+            # Configuración por defecto en caso de error
+            return {
+                "empresa_nombre": self.default_values["nombre"],
+                "empresa_nit": self.default_values["nit"],
+                "empresa_direccion": "No disponible",
+                "empresa_telefono": "No disponible",
+                "empresa_email": "no-available@empresa.com",
+                "moneda": "USD",
+                "iva": Decimal("16.00"),
+                "retencion_iva": Decimal("75.00"),
+                "retencion_islr": Decimal("1.00"),
+            }
 
-    # ============ MÉTODOS DE VALIDACIÓN DE UNICIDAD ============
-
-    def ci_exists(self, ci_numero: str, exclude_id: Optional[int] = None) -> bool:
+    def nit_exists(self, nit: str, exclude_id: Optional[int] = None) -> bool:
         """
-        Verifica si un CI ya existe
+        Verifica si un NIT ya está registrado en la base de datos
 
         Args:
-            ci_numero: Número de CI a verificar
-            exclude_id: ID a excluir (para actualizaciones)
+            nit: NIT a verificar
+            exclude_id: ID a excluir de la búsqueda (para actualizaciones)
 
         Returns:
-            bool: True si existe, False en caso contrario
+            True si el NIT ya existe, False en caso contrario
         """
         try:
-            query = (
-                f"SELECT COUNT(*) as count FROM {self.table_name} WHERE ci_numero = %s"
+            if exclude_id:
+                query = f"SELECT COUNT(*) as count FROM {self.TABLE_NAME} WHERE nit = %s AND id != %s"
+                params = (nit, exclude_id)
+            else:
+                query = (
+                    f"SELECT COUNT(*) as count FROM {self.TABLE_NAME} WHERE nit = %s"
+                )
+                params = (nit,)
+
+            result = self.fetch_one(query, params)
+            return result["count"] > 0 if result else False
+
+        except Exception as e:
+            logger.error(f"❌ Error verificando existencia de NIT '{nit}': {e}")
+            return False
+
+    def buscar_por_nombre(self, nombre: str, limit: int = 10) -> List[Dict[str, Any]]:
+        """
+        Busca empresas por nombre o parte del nombre
+
+        Args:
+            nombre: Nombre o parte del nombre a buscar
+            limit: Límite de resultados
+
+        Returns:
+            Lista de empresas que coinciden con la búsqueda
+        """
+        try:
+            search_term = f"%{nombre}%"
+            query = f"""
+                SELECT * FROM {self.TABLE_NAME} 
+                WHERE nombre ILIKE %s 
+                ORDER BY nombre
+                LIMIT %s
+            """
+
+            results = self.fetch_all(query, (search_term, limit))
+            logger.debug(
+                f"✅ Búsqueda de empresas por nombre '{nombre}': {len(results)} resultados"
             )
-            params = [ci_numero]
-
-            if exclude_id is not None:
-                query += " AND id != %s"
-                params.append(str(exclude_id))
-
-            result = self.fetch_one(query, params)
-            return result["count"] > 0 if result else False
+            return results
 
         except Exception as e:
-            print(f"✗ Error verificando CI: {e}")
+            logger.error(f"❌ Error buscando empresas por nombre '{nombre}': {e}")
+            return []
+
+    def obtener_todas(self, limit: int = 100) -> List[Dict[str, Any]]:
+        """
+        Obtiene todas las empresas registradas
+
+        Args:
+            limit: Límite de resultados (por seguridad)
+
+        Returns:
+            Lista de todas las empresas
+        """
+        try:
+            query = f"SELECT * FROM {self.TABLE_NAME} ORDER BY nombre LIMIT %s"
+            results = self.fetch_all(query, (limit,))
+
+            logger.debug(f"✅ Obtenidas {len(results)} empresas")
+            return results
+
+        except Exception as e:
+            logger.error(f"❌ Error obteniendo todas las empresas: {e}")
+            return []
+
+    # ============ MÉTODOS DE INICIALIZACIÓN ============
+
+    def initialize_empresa(self) -> Tuple[bool, str]:
+        """
+        Inicializa la empresa principal si no existe
+
+        Returns:
+            Tuple: (éxito, mensaje)
+        """
+        try:
+            # Verificar si ya existe una empresa
+            existing = self.get_datos_empresa()
+            if existing.get("id"):
+                return True, f"✅ Empresa ya existe: {existing.get('nombre')}"
+
+            # Crear empresa por defecto
+            empresa_data = {
+                "nombre": self.default_values["nombre"],
+                "nit": self.default_values["nit"],
+                "direccion": "Dirección principal de la empresa",
+                "telefono": "+58 212-1234567",
+                "email": "info@formacioncontinua.com",
+                "logo_path": None,
+            }
+
+            empresa_id = self.create(empresa_data)
+
+            if empresa_id:
+                logger.info(f"✅ Empresa inicializada con ID: {empresa_id}")
+                return True, f"Empresa '{empresa_data['nombre']}' creada exitosamente"
+            else:
+                return False, "No se pudo crear la empresa inicial"
+
+        except Exception as e:
+            logger.error(f"❌ Error inicializando empresa: {e}")
+            return False, f"Error al inicializar empresa: {str(e)}"
+
+    def verificar_tabla(self) -> bool:
+        """
+        Verifica que la tabla de empresa exista y esté accesible
+
+        Returns:
+            True si la tabla está accesible, False en caso contrario
+        """
+        try:
+            # Verificar si la tabla existe
+            table_exists = self.table_exists(self.TABLE_NAME)
+
+            if not table_exists:
+                logger.error(f"❌ La tabla '{self.TABLE_NAME}' no existe")
+                return False
+
+            # Verificar si podemos acceder a la tabla
+            test_query = f"SELECT COUNT(*) as count FROM {self.TABLE_NAME}"
+            result = self.fetch_one(test_query)
+
+            if result is not None:
+                logger.debug(f"✅ Tabla '{self.TABLE_NAME}' verificada y accesible")
+                return True
+            else:
+                logger.error(f"❌ No se puede acceder a la tabla '{self.TABLE_NAME}'")
+                return False
+
+        except Exception as e:
+            logger.error(f"❌ Error verificando tabla '{self.TABLE_NAME}': {e}")
             return False
 
-    def email_exists(self, email: str, exclude_id: Optional[int] = None) -> bool:
+    # ============ MÉTODOS DE FORMATO Y PRESENTACIÓN ============
+
+    def to_dict(self, empresa_data: Dict[str, Any]) -> Dict[str, Any]:
         """
-        Verifica si un email ya existe
+        Formatea los datos de la empresa para presentación
 
         Args:
-            email: Email a verificar
-            exclude_id: ID a excluir (para actualizaciones)
+            empresa_data: Datos crudos de la empresa
 
         Returns:
-            bool: True si existe, False en caso contrario
+            Diccionario formateado para presentación
         """
         try:
-            query = f"SELECT COUNT(*) as count FROM {self.table_name} WHERE email = %s"
-            params = [email]
+            formatted = empresa_data.copy()
 
-            if exclude_id is not None:
-                query += " AND id != %s"
-                params.append(str(exclude_id))
+            # Formatear datos de contacto
+            if formatted.get("telefono"):
+                formatted["telefono_formateado"] = self._format_telefono(
+                    formatted["telefono"]
+                )
 
-            result = self.fetch_one(query, params)
-            return result["count"] > 0 if result else False
+            if formatted.get("email"):
+                formatted["email_link"] = f"mailto:{formatted['email']}"
+
+            # Información adicional
+            formatted["tiene_logo"] = bool(formatted.get("logo_path"))
+
+            # Fecha formateada
+            if formatted.get("created_at"):
+                try:
+                    if isinstance(formatted["created_at"], str):
+                        fecha_obj = datetime.strptime(
+                            formatted["created_at"], "%Y-%m-%d %H:%M:%S"
+                        )
+                    else:
+                        fecha_obj = formatted["created_at"]
+
+                    formatted["created_at_formateado"] = fecha_obj.strftime("%d/%m/%Y")
+                except:
+                    formatted["created_at_formateado"] = str(
+                        formatted.get("created_at", "")
+                    )
+
+            return formatted
 
         except Exception as e:
-            print(f"✗ Error verificando email: {e}")
-            return False
+            logger.error(f"❌ Error formateando datos de empresa: {e}")
+            return empresa_data
 
-    # ============ MÉTODOS DE ANÁLISIS Y REPORTES ============
+    def _format_telefono(self, telefono: str) -> str:
+        """Formatea un número de teléfono para presentación"""
+        if not telefono:
+            return ""
 
-    def get_estadisticas_por_edad(self) -> List[Dict[str, Any]]:
+        # Eliminar caracteres no numéricos
+        numeros = "".join(filter(str.isdigit, telefono))
+
+        # Formatear según longitud
+        if len(numeros) == 10:
+            return f"({numeros[:3]}) {numeros[3:6]}-{numeros[6:]}"
+        elif len(numeros) == 11:
+            return f"+{numeros[0]} ({numeros[1:4]}) {numeros[4:7]}-{numeros[7:]}"
+        else:
+            return telefono
+
+    # ============ MÉTODOS DE MANTENIMIENTO ============
+
+    def backup_datos_empresa(self) -> Optional[Dict[str, Any]]:
         """
-        Obtiene distribución de docentes por rango de edad
+        Crea una copia de seguridad de los datos de la empresa
 
         Returns:
-            List[Dict]: Distribución por edad
+            Diccionario con datos de backup o None si hay error
         """
         try:
-            query = """
-            SELECT 
-                CASE 
-                    WHEN EXTRACT(YEAR FROM AGE(fecha_nacimiento)) < 30 THEN 'Menor de 30'
-                    WHEN EXTRACT(YEAR FROM AGE(fecha_nacimiento)) BETWEEN 30 AND 40 THEN '30-40'
-                    WHEN EXTRACT(YEAR FROM AGE(fecha_nacimiento)) BETWEEN 41 AND 50 THEN '41-50'
-                    WHEN EXTRACT(YEAR FROM AGE(fecha_nacimiento)) BETWEEN 51 AND 60 THEN '51-60'
-                    WHEN EXTRACT(YEAR FROM AGE(fecha_nacimiento)) > 60 THEN 'Mayor de 60'
-                    ELSE 'Edad no especificada'
-                END as rango_edad,
-                COUNT(*) as cantidad
-            FROM docentes
-            WHERE activo = TRUE
-            GROUP BY 
-                CASE 
-                    WHEN EXTRACT(YEAR FROM AGE(fecha_nacimiento)) < 30 THEN 'Menor de 30'
-                    WHEN EXTRACT(YEAR FROM AGE(fecha_nacimiento)) BETWEEN 30 AND 40 THEN '30-40'
-                    WHEN EXTRACT(YEAR FROM AGE(fecha_nacimiento)) BETWEEN 41 AND 50 THEN '41-50'
-                    WHEN EXTRACT(YEAR FROM AGE(fecha_nacimiento)) BETWEEN 51 AND 60 THEN '51-60'
-                    WHEN EXTRACT(YEAR FROM AGE(fecha_nacimiento)) > 60 THEN 'Mayor de 60'
-                    ELSE 'Edad no especificada'
-                END
-            ORDER BY cantidad DESC
-            """
+            empresa_data = self.get_datos_empresa()
 
-            return self.fetch_all(query)
+            backup = {
+                "empresa_data": empresa_data,
+                "configuracion": self.get_configuracion(),
+                "fecha_backup": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                "total_empresas": len(self.obtener_todas()),
+                "version_sistema": "FormaGestPro v2.0",
+            }
+
+            logger.info("✅ Backup de datos de empresa creado")
+            return backup
 
         except Exception as e:
-            print(f"✗ Error obteniendo estadísticas por edad: {e}")
-            return []
+            logger.error(f"❌ Error creando backup de empresa: {e}")
+            return None
 
-    def get_registros_por_mes(self, year: Optional[int] = None) -> List[Dict[str, Any]]:
-        """
-        Obtiene registros de docentes por mes
-
-        Args:
-            year: Año específico (None para año actual)
-
-        Returns:
-            List[Dict]: Registros por mes
-        """
-        try:
-            if year is None:
-                year = datetime.now().year
-
-            query = """
-            SELECT 
-                EXTRACT(MONTH FROM created_at) as mes,
-                COUNT(*) as cantidad
-            FROM docentes
-            WHERE EXTRACT(YEAR FROM created_at) = %s
-            AND activo = TRUE
-            GROUP BY EXTRACT(MONTH FROM created_at)
-            ORDER BY mes
-            """
-
-            return self.fetch_all(query, (year,))
-
-        except Exception as e:
-            print(f"✗ Error obteniendo registros por mes: {e}")
-            return []
-
-    def get_top_especialidades(self, limit: int = 10) -> List[Dict[str, Any]]:
-        """
-        Obtiene las especialidades más comunes entre los docentes
-
-        Args:
-            limit: Número de especialidades a retornar
-
-        Returns:
-            List[Dict]: Especialidades más comunes
-        """
-        try:
-            query = """
-            SELECT 
-                COALESCE(especialidad, 'Sin especialidad') as especialidad,
-                COUNT(*) as cantidad
-            FROM docentes
-            WHERE activo = TRUE
-            GROUP BY especialidad
-            ORDER BY cantidad DESC
-            LIMIT %s
-            """
-
-            return self.fetch_all(query, (limit,))
-
-        except Exception as e:
-            print(f"✗ Error obteniendo top especialidades: {e}")
-            return []
-
-    # ============ MÉTODOS DE CONFIGURACIÓN ============
-
-    def get_expediciones_ci(self) -> List[str]:
-        """
-        Obtiene la lista de expediciones de CI válidas
-
-        Returns:
-            List[str]: Lista de expediciones
-        """
-        return self.EXPEDICIONES_CI.copy()
-
-    def get_grados_academicos(self) -> List[str]:
-        """
-        Obtiene la lista de grados académicos válidos
-
-        Returns:
-            List[str]: Lista de grados académicos
-        """
-        return self.GRADOS_ACADEMICOS.copy()
-
-    # ============ MÉTODOS DE COMPATIBILIDAD ============
-
-    def obtener_todos(self):
-        """Método de compatibilidad con nombres antiguos"""
-        return self.get_all()
-
-    def obtener_por_id(self, docente_id):
-        """Método de compatibilidad con nombres antiguos"""
-        return self.read(docente_id)
-
-    def buscar_docentes(self, termino):
-        """Método de compatibilidad con nombres antiguos"""
-        return self.search(termino)
-
-    def update_table(self, table, data, condition, params=None):
-        """Método helper para actualizar (compatibilidad con BaseModel)"""
-        return self.update(table, data, condition, params)  # type: ignore
+    def __str__(self) -> str:
+        """Representación en string del modelo"""
+        empresa_data = self.get_datos_empresa()
+        return f"EmpresaModel('{empresa_data.get('nombre', 'Sin nombre')}', NIT: {empresa_data.get('nit', 'Sin NIT')})"

@@ -1,6 +1,8 @@
 # app/models/base_model.py - Versión corregida
+from datetime import datetime
 import sys
 import os
+from typing import Any, Dict, Optional, Tuple, Union
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -9,6 +11,10 @@ from psycopg2 import pool
 from psycopg2.extras import RealDictCursor
 from app.database.connection import DatabaseConnection
 import threading
+
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 class BaseModel:
@@ -416,4 +422,109 @@ class BaseModel:
             return self.fetch_scalar(query)
         except Exception as e:
             print(f"✗ Error obteniendo último ID: {e}")
+            return None
+
+    def update_table(
+        self,
+        table: str,
+        data: Dict[str, Any],
+        condition: str,
+        params: Tuple = None,  # type:ignore
+        returning: str = None,  # type:ignore
+        auto_timestamp: bool = True,
+    ) -> Optional[Union[int, Any]]:
+        """
+        Actualiza registros en una tabla con funcionalidades avanzadas
+
+        Args:
+            table (str): Nombre de la tabla
+            data (dict): Diccionario con datos a actualizar {columna: valor}
+            condition (str): Condición WHERE (sin la palabra WHERE)
+            params (tuple/list): Parámetros para la condición WHERE
+            returning (str): Columna a retornar después del UPDATE
+            auto_timestamp (bool): Si es True, agrega/actualiza campo updated_at
+
+        Returns:
+            - Si returning=None: Número de filas afectadas
+            - Si returning=columna: Valor de la columna
+            - None en caso de error
+
+        Ejemplos:
+            # Actualizar sin retorno
+            filas = model.update_table(
+                table="estudiantes",
+                data={"nombre": "Juan"},
+                condition="id = %s",
+                params=(1,)
+            )
+
+            # Actualizar con retorno del ID
+            estudiante_id = model.update_table(
+                table="estudiantes",
+                data={"nombre": "Juan"},
+                condition="id = %s",
+                params=(1,),
+                returning="id"
+            )
+        """
+        if not data:
+            return 0
+
+        try:
+            # Agregar timestamp de actualización si está habilitado
+            if auto_timestamp:
+                # Verificar si la tabla tiene columna updated_at
+                columns = self.get_table_columns(table)
+                if "updated_at" in columns:
+                    data["updated_at"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+            # Preparar SET clause
+            set_clause = ", ".join([f"{key} = %s" for key in data.keys()])
+            set_values = tuple(data.values())
+
+            # Construir consulta
+            query = f"UPDATE {table} SET {set_clause} WHERE {condition}"
+
+            # Agregar RETURNING si se especifica
+            if returning:
+                query += f" RETURNING {returning}"
+
+            # Combinar parámetros
+            if params:
+                all_params = set_values + tuple(params)
+            else:
+                all_params = set_values
+
+            # Ejecutar consulta
+            if returning:
+                # Si hay RETURNING, necesitamos fetch=True
+                result = self.execute_query(query, all_params, fetch=True, commit=True)
+                if result:
+                    # Extraer el valor retornado
+                    if isinstance(result, list) and len(result) > 0:
+                        row = result[0]
+                        if isinstance(row, dict):
+                            return row.get(returning)
+                        elif isinstance(row, tuple) and len(row) > 0:
+                            return row[0]
+                    elif isinstance(result, dict):
+                        return result.get(returning)
+                return None
+            else:
+                # Sin RETURNING, solo número de filas afectadas
+                result = self.execute_query(query, all_params, fetch=False, commit=True)
+                return result
+
+        except Exception as e:
+            logger.error(f"✗ Error en update_table para tabla {table}: {e}")
+            logger.error(f"  Consulta: {query}")
+            if params:
+                logger.error(f"  Parámetros: {all_params}")
+
+            # Rollback en caso de error
+            if self.connection:
+                try:
+                    self.connection.rollback()
+                except:
+                    pass
             return None
