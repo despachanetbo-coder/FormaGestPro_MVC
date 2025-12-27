@@ -1,14 +1,23 @@
-from .estudiantes_tab import EstudiantesTab
-from .docentes_tab import DocentesTab
-from .programas_tab import ProgramasTab
-from .dashboard_tab import DashboardTab
-from .ayuda_tab import AyudaTab
+"""
+Módulo de pestañas - Todas las clases de pestañas disponibles
+"""
+
+# Importar usando rutas relativas CORRECTAS
 from .base_tab import BaseTab
+from .ayuda_tab import AyudaTab
+from .dashboard_tab import DashboardTab
+from .docentes_tab import DocentesTab
+from .estudiantes_tab import EstudiantesTab
+from .financiero_tab import FinancieroTab
+from .programas_tab import ProgramasTab
+
+# Lista de todas las pestañas
 __all__ = [
-    "EstudiantesTab",
-    "DocentesTab",
-    "ProgramasTab",
-    "DashboardTab",
-    "AyudaTab",
-    "BaseTab",
+    'BaseTab',
+    'DashboardTab',
+    'EstudiantesTab',
+    'DocentesTab',
+    'ProgramasTab',
+    'FinancieroTab',
+    'AyudaTab',
 ]

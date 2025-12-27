@@ -11,14 +11,16 @@ from typing import Dict, List, Optional, Tuple, Any, Union, TypeVar, Type
 from decimal import Decimal
 
 from app.models.base_model import BaseModel
-from app.models.configuracion_model import ConfiguracionModel
+from app.models.configuracion_model import ConfiguracionesModel
 
 logger = logging.getLogger(__name__)
 
-T = TypeVar('T')
+T = TypeVar("T")
 
-class ConfiguracionModel(BaseModel):
+
+class ConfiguracionesController(BaseModel):
     """Modelo para configuraciones del sistema"""
+
     def __init__(self, db_path: str = None):
         """
         Inicializar controlador de configuraciones
@@ -31,7 +33,9 @@ class ConfiguracionModel(BaseModel):
 
     # ==================== OPERACIONES CRUD ====================
 
-    def crear_configuracion(self, datos: Dict[str, Any]) -> Tuple[bool, str, Optional[ConfiguracionModel]]:
+    def crear_configuracion(
+        self, datos: Dict[str, Any]
+    ) -> Tuple[bool, str, Optional[ConfiguracionesModel]]:
         """
         Crear una nueva configuración
 
@@ -48,28 +52,38 @@ class ConfiguracionModel(BaseModel):
                 return False, "Errores de validación: " + "; ".join(errores), None
 
             # Verificar si ya existe una configuración con la misma clave
-            clave = datos['clave']
-            existente = ConfiguracionModel.get_by_key(clave)
+            clave = datos["clave"]
+            existente = ConfiguracionesModel.get_by_key(clave)
             if existente:
-                return False, f"Ya existe una configuración con la clave '{clave}'", None
+                return (
+                    False,
+                    f"Ya existe una configuración con la clave '{clave}'",
+                    None,
+                )
 
             # Crear la configuración
-            configuracion = ConfiguracionModel(**datos)
+            configuracion = ConfiguracionesModel(**datos)
             configuracion_id = configuracion.save()
 
             if configuracion_id:
-                config_creada = ConfiguracionModel.get_by_id(configuracion_id)
+                config_creada = ConfiguracionesModel.get_by_id(configuracion_id)
                 self._cache[clave] = config_creada  # Actualizar cache
                 mensaje = f"Configuración '{clave}' creada exitosamente"
                 return True, mensaje, config_creada
             else:
-                return False, "Error al guardar la configuración en la base de datos", None
+                return (
+                    False,
+                    "Error al guardar la configuración en la base de datos",
+                    None,
+                )
 
         except Exception as e:
             logger.error(f"Error al crear configuración: {e}")
             return False, f"Error interno: {str(e)}", None
 
-    def actualizar_configuracion(self, config_id: int, datos: Dict[str, Any]) -> Tuple[bool, str, Optional[ConfiguracionModel]]:
+    def actualizar_configuracion(
+        self, config_id: int, datos: Dict[str, Any]
+    ) -> Tuple[bool, str, Optional[ConfiguracionesModel]]:
         """
         Actualizar una configuración existente
 
@@ -82,7 +96,7 @@ class ConfiguracionModel(BaseModel):
         """
         try:
             # Buscar configuración existente
-            configuracion = ConfiguracionModel.get_by_id(config_id)
+            configuracion = ConfiguracionesModel.get_by_id(config_id)
             if not configuracion:
                 return False, f"No se encontró configuración con ID {config_id}", None
 
@@ -92,10 +106,14 @@ class ConfiguracionModel(BaseModel):
                 return False, "Errores de validación: " + "; ".join(errores), None
 
             # Verificar unicidad de clave si se está actualizando
-            if 'clave' in datos and datos['clave'] != configuracion.clave:
-                existente = ConfiguracionModel.get_by_key(datos['clave'])
+            if "clave" in datos and datos["clave"] != configuracion.clave:
+                existente = ConfiguracionesModel.get_by_key(datos["clave"])
                 if existente and existente.id != config_id:
-                    return False, f"Ya existe otra configuración con la clave '{datos['clave']}'", None
+                    return (
+                        False,
+                        f"Ya existe otra configuración con la clave '{datos['clave']}'",
+                        None,
+                    )
 
             # Actualizar atributos de la configuración
             for key, value in datos.items():
@@ -109,7 +127,9 @@ class ConfiguracionModel(BaseModel):
             if configuracion.save():
                 # Actualizar cache
                 self._cache[configuracion.clave] = configuracion
-                mensaje = f"Configuración '{configuracion.clave}' actualizada exitosamente"
+                mensaje = (
+                    f"Configuración '{configuracion.clave}' actualizada exitosamente"
+                )
                 return True, mensaje, configuracion
             else:
                 return False, "Error al guardar los cambios", None
@@ -129,7 +149,7 @@ class ConfiguracionModel(BaseModel):
             Tuple (éxito, mensaje)
         """
         try:
-            configuracion = ConfiguracionModel.get_by_id(config_id)
+            configuracion = ConfiguracionesModel.get_by_id(config_id)
             if not configuracion:
                 return False, f"No se encontró configuración con ID {config_id}"
 
@@ -137,7 +157,10 @@ class ConfiguracionModel(BaseModel):
 
             # No permitir eliminar configuraciones predefinidas críticas
             if clave in self._obtener_claves_criticas():
-                return False, f"No se puede eliminar la configuración predefinida '{clave}'"
+                return (
+                    False,
+                    f"No se puede eliminar la configuración predefinida '{clave}'",
+                )
 
             if configuracion.delete():
                 # Limpiar cache
@@ -153,7 +176,7 @@ class ConfiguracionModel(BaseModel):
 
     # ==================== CONSULTAS ====================
 
-    def obtener_configuracion(self, config_id: int) -> Optional[ConfiguracionModel]:
+    def obtener_configuracion(self, config_id: int) -> Optional[ConfiguracionesModel]:
         """
         Obtener una configuración por su ID
 
@@ -161,15 +184,17 @@ class ConfiguracionModel(BaseModel):
             config_id: ID de la configuración
 
         Returns:
-            ConfiguracionModel o None si no se encuentra
+            ConfiguracionesModel o None si no se encuentra
         """
         try:
-            return ConfiguracionModel.get_by_id(config_id)
+            return ConfiguracionesModel.get_by_id(config_id)
         except Exception as e:
             logger.error(f"Error al obtener configuración {config_id}: {e}")
             return None
 
-    def obtener_configuracion_por_clave(self, clave: str, usar_cache: bool = True) -> Optional[ConfiguracionModel]:
+    def obtener_configuracion_por_clave(
+        self, clave: str, usar_cache: bool = True
+    ) -> Optional[ConfiguracionesModel]:
         """
         Obtener configuración por clave
 
@@ -178,14 +203,14 @@ class ConfiguracionModel(BaseModel):
             usar_cache: Si True, usa cache para mejorar rendimiento
 
         Returns:
-            ConfiguracionModel o None si no se encuentra
+            ConfiguracionesModel o None si no se encuentra
         """
         try:
             # Verificar cache primero si está habilitado
             if usar_cache and clave in self._cache:
                 return self._cache[clave]
 
-            config = ConfiguracionModel.get_by_key(clave)
+            config = ConfiguracionesModel.get_by_key(clave)
             if config and usar_cache:
                 self._cache[clave] = config
 
@@ -195,10 +220,7 @@ class ConfiguracionModel(BaseModel):
             return None
 
     def obtener_valor_configuracion(
-        self, 
-        clave: str, 
-        valor_default: Any = None,
-        tipo: Type[T] = str
+        self, clave: str, valor_default: Any = None, tipo: Type[T] = str
     ) -> Union[T, Any]:
         """
         Obtener el valor de una configuración con tipo específico
@@ -226,12 +248,12 @@ class ConfiguracionModel(BaseModel):
                         return valor_deserializado
                 except (json.JSONDecodeError, TypeError):
                     pass
-                
+
             # Convertir al tipo especificado
             if tipo == bool:
                 if isinstance(valor, str):
                     valor_lower = valor.lower()
-                    return valor_lower in ('true', '1', 'yes', 'si', 'sí', 'verdadero')
+                    return valor_lower in ("true", "1", "yes", "si", "sí", "verdadero")
                 return bool(valor)
             elif tipo == int:
                 try:
@@ -250,13 +272,13 @@ class ConfiguracionModel(BaseModel):
                     return valor_default
             elif tipo == list and isinstance(valor, str):
                 # Intentar parsear lista separada por comas
-                return [item.strip() for item in valor.split(',') if item.strip()]
+                return [item.strip() for item in valor.split(",") if item.strip()]
             elif tipo == dict and isinstance(valor, str):
                 # Intentar parsear diccionario simple (clave=valor)
                 resultado = {}
-                for item in valor.split(','):
-                    if '=' in item:
-                        k, v = item.split('=', 1)
+                for item in valor.split(","):
+                    if "=" in item:
+                        k, v = item.split("=", 1)
                         resultado[k.strip()] = v.strip()
                 return resultado if resultado else valor_default
             else:
@@ -267,12 +289,12 @@ class ConfiguracionModel(BaseModel):
             return valor_default
 
     def establecer_valor_configuracion(
-        self, 
-        clave: str, 
-        valor: Any, 
+        self,
+        clave: str,
+        valor: Any,
         descripcion: str = None,
-        crear_si_no_existe: bool = True
-    ) -> Tuple[bool, str, Optional[ConfiguracionModel]]:
+        crear_si_no_existe: bool = True,
+    ) -> Tuple[bool, str, Optional[ConfiguracionesModel]]:
         """
         Establecer el valor de una configuración
 
@@ -287,18 +309,20 @@ class ConfiguracionModel(BaseModel):
         """
         try:
             # Buscar configuración existente
-            configuracion = self.obtener_configuracion_por_clave(clave, usar_cache=False)
+            configuracion = self.obtener_configuracion_por_clave(
+                clave, usar_cache=False
+            )
 
             if configuracion:
                 # Actualizar configuración existente
-                datos = {'valor': self._serializar_valor(valor)}
+                datos = {"valor": self._serializar_valor(valor)}
                 return self.actualizar_configuracion(configuracion.id, datos)
             elif crear_si_no_existe:
                 # Crear nueva configuración
                 datos = {
-                    'clave': clave,
-                    'valor': self._serializar_valor(valor),
-                    'descripcion': descripcion or f"Configuración para {clave}"
+                    "clave": clave,
+                    "valor": self._serializar_valor(valor),
+                    "descripcion": descripcion or f"Configuración para {clave}",
                 }
                 return self.crear_configuracion(datos)
             else:
@@ -309,10 +333,8 @@ class ConfiguracionModel(BaseModel):
             return False, f"Error interno: {str(e)}", None
 
     def obtener_todas_configuraciones(
-        self, 
-        ordenar_por: str = 'clave',
-        orden_asc: bool = True
-    ) -> List[ConfiguracionModel]:
+        self, ordenar_por: str = "clave", orden_asc: bool = True
+    ) -> List[ConfiguracionesModel]:
         """
         Obtener todas las configuraciones
 
@@ -325,21 +347,27 @@ class ConfiguracionModel(BaseModel):
         """
         try:
             # Validar campo de orden
-            campos_validos = ['clave', 'created_at', 'updated_at']
+            campos_validos = ["clave", "created_at", "updated_at"]
             if ordenar_por not in campos_validos:
-                ordenar_por = 'clave'
+                ordenar_por = "clave"
 
             orden = "ASC" if orden_asc else "DESC"
             query = f"SELECT * FROM configuraciones ORDER BY {ordenar_por} {orden}"
 
-            configuraciones = ConfiguracionModel.query(query)
-            return [ConfiguracionModel(**config) for config in configuraciones] if configuraciones else []
+            configuraciones = ConfiguracionesModel.query(query)
+            return (
+                [ConfiguracionesModel(**config) for config in configuraciones]
+                if configuraciones
+                else []
+            )
 
         except Exception as e:
             logger.error(f"Error al obtener todas las configuraciones: {e}")
             return []
 
-    def obtener_configuraciones_por_grupo(self, prefijo: str) -> List[ConfiguracionModel]:
+    def obtener_configuraciones_por_grupo(
+        self, prefijo: str
+    ) -> List[ConfiguracionesModel]:
         """
         Obtener configuraciones por prefijo (grupo)
 
@@ -350,17 +378,15 @@ class ConfiguracionModel(BaseModel):
             Lista de configuraciones del grupo
         """
         try:
-            configuraciones = ConfiguracionModel.get_by_prefix(prefijo)
+            configuraciones = ConfiguracionesModel.get_by_prefix(prefijo)
             return configuraciones
         except Exception as e:
             logger.error(f"Error al obtener configuraciones del grupo '{prefijo}': {e}")
             return []
 
     def buscar_configuraciones(
-        self, 
-        texto: str,
-        buscar_en: List[str] = None
-    ) -> List[ConfiguracionModel]:
+        self, texto: str, buscar_en: List[str] = None
+    ) -> List[ConfiguracionesModel]:
         """
         Buscar configuraciones por texto
 
@@ -376,7 +402,7 @@ class ConfiguracionModel(BaseModel):
                 return []
 
             if buscar_en is None:
-                buscar_en = ['clave', 'descripcion', 'valor']
+                buscar_en = ["clave", "descripcion", "valor"]
 
             # Construir condiciones de búsqueda
             condiciones = []
@@ -394,8 +420,12 @@ class ConfiguracionModel(BaseModel):
                 LIMIT 100
             """
 
-            configuraciones = ConfiguracionModel.query(query, parametros)
-            return [ConfiguracionModel(**config) for config in configuraciones] if configuraciones else []
+            configuraciones = ConfiguracionesModel.query(query, parametros)
+            return (
+                [ConfiguracionesModel(**config) for config in configuraciones]
+                if configuraciones
+                else []
+            )
 
         except Exception as e:
             logger.error(f"Error al buscar configuraciones ({texto}): {e}")
@@ -403,7 +433,9 @@ class ConfiguracionModel(BaseModel):
 
     # ==================== OPERACIONES ESPECÍFICAS ====================
 
-    def inicializar_configuraciones_predeterminadas(self) -> Tuple[bool, str, Dict[str, Any]]:
+    def inicializar_configuraciones_predeterminadas(
+        self,
+    ) -> Tuple[bool, str, Dict[str, Any]]:
         """
         Inicializar configuraciones predeterminadas del sistema
 
@@ -412,94 +444,114 @@ class ConfiguracionModel(BaseModel):
         """
         try:
             resultados = {
-                'creadas': 0,
-                'actualizadas': 0,
-                'omitidas': 0,
-                'errores': 0,
-                'detalles': []
+                "creadas": 0,
+                "actualizadas": 0,
+                "omitidas": 0,
+                "errores": 0,
+                "detalles": [],
             }
 
             # Configuraciones predeterminadas
             configuraciones_predeterminadas = {
                 # Configuraciones generales
-                'EMPRESA_NOMBRE': ('FormaGestPro Academy', 'Nombre de la institución'),
-                'EMPRESA_DIRECCION': ('Av. Principal #123, Ciudad', 'Dirección de la institución'),
-                'EMPRESA_TELEFONO': ('+591 77712345', 'Teléfono de contacto'),
-                'EMPRESA_EMAIL': ('info@formagestpro.edu.bo', 'Email de contacto'),
-
+                "EMPRESA_NOMBRE": ("FormaGestPro Academy", "Nombre de la institución"),
+                "EMPRESA_DIRECCION": (
+                    "Av. Principal #123, Ciudad",
+                    "Dirección de la institución",
+                ),
+                "EMPRESA_TELEFONO": ("+591 77712345", "Teléfono de contacto"),
+                "EMPRESA_EMAIL": ("info@formagestpro.edu.bo", "Email de contacto"),
                 # Configuraciones del sistema
-                'SISTEMA_MONEDA': ('Bs.', 'Símbolo de moneda local'),
-                'SISTEMA_PAIS': ('Bolivia', 'País donde opera el sistema'),
-                'SISTEMA_IDIOMA': ('es', 'Idioma del sistema (es, en)'),
-                'SISTEMA_ZONA_HORARIA': ('America/La_Paz', 'Zona horaria'),
-                'SISTEMA_FORMATO_FECHA': ('DD/MM/YYYY', 'Formato de fecha por defecto'),
-
+                "SISTEMA_MONEDA": ("Bs.", "Símbolo de moneda local"),
+                "SISTEMA_PAIS": ("Bolivia", "País donde opera el sistema"),
+                "SISTEMA_IDIOMA": ("es", "Idioma del sistema (es, en)"),
+                "SISTEMA_ZONA_HORARIA": ("America/La_Paz", "Zona horaria"),
+                "SISTEMA_FORMATO_FECHA": ("DD/MM/YYYY", "Formato de fecha por defecto"),
                 # Configuraciones académicas
-                'ACADEMICO_CUOTA_DEFAULT': ('1500.00', 'Valor por defecto de cuotas (Bs.)'),
-                'ACADEMICO_HONORARIO_DEFAULT': ('50.00', 'Honorario por hora por defecto (Bs.)'),
-                'ACADEMICO_DIAS_MAX_PAGO': ('30', 'Días máximos para realizar pagos'),
-                'ACADEMICO_TASA_MORA': ('0.5', 'Tasa de mora por día de retraso (%)'),
-
+                "ACADEMICO_CUOTA_DEFAULT": (
+                    "1500.00",
+                    "Valor por defecto de cuotas (Bs.)",
+                ),
+                "ACADEMICO_HONORARIO_DEFAULT": (
+                    "50.00",
+                    "Honorario por hora por defecto (Bs.)",
+                ),
+                "ACADEMICO_DIAS_MAX_PAGO": ("30", "Días máximos para realizar pagos"),
+                "ACADEMICO_TASA_MORA": ("0.5", "Tasa de mora por día de retraso (%)"),
                 # Configuraciones de notificaciones
-                'NOTIFICACION_EMAIL_ENABLED': ('0', 'Habilitar notificaciones por email (0=No, 1=Sí)'),
-
+                "NOTIFICACION_EMAIL_ENABLED": (
+                    "0",
+                    "Habilitar notificaciones por email (0=No, 1=Sí)",
+                ),
                 # Configuraciones de seguridad
-                'SEGURIDAD_INTENTOS_LOGIN': ('3', 'Intentos máximos de login fallidos'),
-                'SEGURIDAD_TIEMPO_BLOQUEO': ('30', 'Tiempo de bloqueo en minutos'),
-                'SEGURIDAD_PASSWORD_MIN_LENGTH': ('8', 'Longitud mínima de contraseña'),
-
+                "SEGURIDAD_INTENTOS_LOGIN": ("3", "Intentos máximos de login fallidos"),
+                "SEGURIDAD_TIEMPO_BLOQUEO": ("30", "Tiempo de bloqueo en minutos"),
+                "SEGURIDAD_PASSWORD_MIN_LENGTH": ("8", "Longitud mínima de contraseña"),
                 # Configuraciones de backup
-                'BACKUP_AUTO_ENABLED': ('1', 'Backup automático habilitado (0=No, 1=Sí)'),
-                'BACKUP_AUTO_HORA': ('02:00', 'Hora para backup automático (HH:MM)'),
-                'BACKUP_RETENCION_DIAS': ('30', 'Días de retención de backups'),
-
+                "BACKUP_AUTO_ENABLED": (
+                    "1",
+                    "Backup automático habilitado (0=No, 1=Sí)",
+                ),
+                "BACKUP_AUTO_HORA": ("02:00", "Hora para backup automático (HH:MM)"),
+                "BACKUP_RETENCION_DIAS": ("30", "Días de retención de backups"),
                 # Configuraciones de reportes
-                'REPORTE_FOOTER_TEXT': ('FormaGestPro - Sistema de Gestión Académica', 'Texto del pie de página en reportes'),
+                "REPORTE_FOOTER_TEXT": (
+                    "FormaGestPro - Sistema de Gestión Académica",
+                    "Texto del pie de página en reportes",
+                ),
             }
 
             for clave, (valor, descripcion) in configuraciones_predeterminadas.items():
                 try:
                     # Verificar si ya existe
-                    config_existente = self.obtener_configuracion_por_clave(clave, usar_cache=False)
+                    config_existente = self.obtener_configuracion_por_clave(
+                        clave, usar_cache=False
+                    )
 
                     if config_existente:
                         # Actualizar solo si el valor es diferente
                         if config_existente.valor != valor:
-                            datos = {'valor': valor}
-                            exito, mensaje, _ = self.actualizar_configuracion(config_existente.id, datos)
+                            datos = {"valor": valor}
+                            exito, mensaje, _ = self.actualizar_configuracion(
+                                config_existente.id, datos
+                            )
                             if exito:
-                                resultados['actualizadas'] += 1
-                                resultados['detalles'].append(f"Actualizada: {clave}")
+                                resultados["actualizadas"] += 1
+                                resultados["detalles"].append(f"Actualizada: {clave}")
                             else:
-                                resultados['errores'] += 1
-                                resultados['detalles'].append(f"Error actualizando {clave}: {mensaje}")
+                                resultados["errores"] += 1
+                                resultados["detalles"].append(
+                                    f"Error actualizando {clave}: {mensaje}"
+                                )
                         else:
-                            resultados['omitidas'] += 1
+                            resultados["omitidas"] += 1
                     else:
                         # Crear nueva configuración
                         datos = {
-                            'clave': clave,
-                            'valor': valor,
-                            'descripcion': descripcion
+                            "clave": clave,
+                            "valor": valor,
+                            "descripcion": descripcion,
                         }
                         exito, mensaje, _ = self.crear_configuracion(datos)
                         if exito:
-                            resultados['creadas'] += 1
-                            resultados['detalles'].append(f"Creada: {clave}")
+                            resultados["creadas"] += 1
+                            resultados["detalles"].append(f"Creada: {clave}")
                         else:
-                            resultados['errores'] += 1
-                            resultados['detalles'].append(f"Error creando {clave}: {mensaje}")
+                            resultados["errores"] += 1
+                            resultados["detalles"].append(
+                                f"Error creando {clave}: {mensaje}"
+                            )
 
                 except Exception as e:
                     logger.error(f"Error al procesar configuración {clave}: {e}")
-                    resultados['errores'] += 1
-                    resultados['detalles'].append(f"Error procesando {clave}: {str(e)}")
+                    resultados["errores"] += 1
+                    resultados["detalles"].append(f"Error procesando {clave}: {str(e)}")
 
             # Limpiar cache después de la inicialización
             self._cache.clear()
 
             # Determinar mensaje final
-            if resultados['errores'] == 0:
+            if resultados["errores"] == 0:
                 mensaje_final = f"Inicialización completada: {resultados['creadas']} creadas, {resultados['actualizadas']} actualizadas, {resultados['omitidas']} omitidas"
             else:
                 mensaje_final = f"Inicialización con errores: {resultados['creadas']} creadas, {resultados['actualizadas']} actualizadas, {resultados['omitidas']} omitidas, {resultados['errores']} errores"
@@ -518,11 +570,11 @@ class ConfiguracionModel(BaseModel):
             Diccionario con configuraciones de la empresa
         """
         try:
-            configuraciones = self.obtener_configuraciones_por_grupo('EMPRESA_')
+            configuraciones = self.obtener_configuraciones_por_grupo("EMPRESA_")
 
             empresa_config = {}
             for config in configuraciones:
-                clave_sin_prefijo = config.clave.replace('EMPRESA_', '').lower()
+                clave_sin_prefijo = config.clave.replace("EMPRESA_", "").lower()
                 empresa_config[clave_sin_prefijo] = config.valor
 
             return empresa_config
@@ -539,7 +591,14 @@ class ConfiguracionModel(BaseModel):
             Diccionario con configuraciones del sistema
         """
         try:
-            grupos = ['SISTEMA_', 'ACADEMICO_', 'NOTIFICACION_', 'SEGURIDAD_', 'BACKUP_', 'REPORTE_']
+            grupos = [
+                "SISTEMA_",
+                "ACADEMICO_",
+                "NOTIFICACION_",
+                "SEGURIDAD_",
+                "BACKUP_",
+                "REPORTE_",
+            ]
 
             sistema_config = {}
             for grupo in grupos:
@@ -548,7 +607,7 @@ class ConfiguracionModel(BaseModel):
                     clave_sin_prefijo = config.clave
                     for prefijo in grupos:
                         if config.clave.startswith(prefijo):
-                            clave_sin_prefijo = config.clave.replace(prefijo, '')
+                            clave_sin_prefijo = config.clave.replace(prefijo, "")
                             break
                     clave_formateada = clave_sin_prefijo.lower()
                     sistema_config[clave_formateada] = config.valor
@@ -566,9 +625,7 @@ class ConfiguracionModel(BaseModel):
     # ==================== VALIDACIONES ====================
 
     def _validar_datos_configuracion(
-        self, 
-        datos: Dict[str, Any], 
-        es_actualizacion: bool = False
+        self, datos: Dict[str, Any], es_actualizacion: bool = False
     ) -> List[str]:
         """
         Validar datos de configuración
@@ -584,33 +641,35 @@ class ConfiguracionModel(BaseModel):
 
         # Validar campos requeridos (solo para creación)
         if not es_actualizacion:
-            campos_requeridos = ['clave']
+            campos_requeridos = ["clave"]
             for campo in campos_requeridos:
-                if campo not in datos or not str(datos.get(campo, '')).strip():
+                if campo not in datos or not str(datos.get(campo, "")).strip():
                     errores.append(f"El campo '{campo}' es requerido")
 
         # Validar clave
-        if 'clave' in datos and datos['clave']:
-            clave = str(datos['clave']).strip()
+        if "clave" in datos and datos["clave"]:
+            clave = str(datos["clave"]).strip()
             if len(clave) < 2:
                 errores.append("La clave debe tener al menos 2 caracteres")
             if len(clave) > 100:
                 errores.append("La clave no puede exceder 100 caracteres")
-            if ' ' in clave:
+            if " " in clave:
                 errores.append("La clave no puede contener espacios")
-            if not clave.isupper() and '_' in clave:
+            if not clave.isupper() and "_" in clave:
                 # Sugerir formato si parece ser una constante
-                errores.append("La clave debe estar en mayúsculas para configuraciones predefinidas")
+                errores.append(
+                    "La clave debe estar en mayúsculas para configuraciones predefinidas"
+                )
 
         # Validar valor si se proporciona
-        if 'valor' in datos and datos['valor'] is not None:
-            valor = datos['valor']
+        if "valor" in datos and datos["valor"] is not None:
+            valor = datos["valor"]
             if isinstance(valor, str) and len(valor) > 1000:
                 errores.append("El valor no puede exceder 1000 caracteres")
 
         # Validar descripción si se proporciona
-        if 'descripcion' in datos and datos['descripcion']:
-            descripcion = str(datos['descripcion']).strip()
+        if "descripcion" in datos and datos["descripcion"]:
+            descripcion = str(datos["descripcion"]).strip()
             if len(descripcion) > 500:
                 errores.append("La descripción no puede exceder 500 caracteres")
 
@@ -627,7 +686,7 @@ class ConfiguracionModel(BaseModel):
             Valor serializado como string
         """
         if valor is None:
-            return ''
+            return ""
         elif isinstance(valor, (list, dict, tuple, set)):
             try:
                 return json.dumps(valor, ensure_ascii=False)
@@ -644,17 +703,19 @@ class ConfiguracionModel(BaseModel):
             Lista de claves críticas
         """
         return [
-            'EMPRESA_NOMBRE',
-            'SISTEMA_MONEDA',
-            'SISTEMA_IDIOMA',
-            'SISTEMA_FORMATO_FECHA',
-            'ACADEMICO_CUOTA_DEFAULT',
-            'SEGURIDAD_PASSWORD_MIN_LENGTH'
+            "EMPRESA_NOMBRE",
+            "SISTEMA_MONEDA",
+            "SISTEMA_IDIOMA",
+            "SISTEMA_FORMATO_FECHA",
+            "ACADEMICO_CUOTA_DEFAULT",
+            "SEGURIDAD_PASSWORD_MIN_LENGTH",
         ]
 
     # ==================== BACKUP Y RESTAURACIÓN ====================
 
-    def exportar_configuraciones_a_json(self, archivo_salida: str = None) -> Tuple[bool, str, Optional[str]]:
+    def exportar_configuraciones_a_json(
+        self, archivo_salida: str = None
+    ) -> Tuple[bool, str, Optional[str]]:
         """
         Exportar todas las configuraciones a archivo JSON
 
@@ -673,50 +734,62 @@ class ConfiguracionModel(BaseModel):
 
             # Preparar datos para exportación
             datos_exportacion = {
-                'metadata': {
-                    'sistema': 'FormaGestPro_MVC',
-                    'version': '2.0',
-                    'fecha_exportacion': datetime.now().isoformat(),
-                    'total_configuraciones': len(configuraciones)
+                "metadata": {
+                    "sistema": "FormaGestPro_MVC",
+                    "version": "2.0",
+                    "fecha_exportacion": datetime.now().isoformat(),
+                    "total_configuraciones": len(configuraciones),
                 },
-                'configuraciones': []
+                "configuraciones": [],
             }
 
             for config in configuraciones:
                 config_data = {
-                    'clave': config.clave,
-                    'valor': config.valor,
-                    'descripcion': config.descripcion,
-                    'created_at': config.created_at.isoformat() if hasattr(config.created_at, 'isoformat') else str(config.created_at),
-                    'updated_at': config.updated_at.isoformat() if hasattr(config.updated_at, 'isoformat') else str(config.updated_at)
+                    "clave": config.clave,
+                    "valor": config.valor,
+                    "descripcion": config.descripcion,
+                    "created_at": (
+                        config.created_at.isoformat()
+                        if hasattr(config.created_at, "isoformat")
+                        else str(config.created_at)
+                    ),
+                    "updated_at": (
+                        config.updated_at.isoformat()
+                        if hasattr(config.updated_at, "isoformat")
+                        else str(config.updated_at)
+                    ),
                 }
-                datos_exportacion['configuraciones'].append(config_data)
+                datos_exportacion["configuraciones"].append(config_data)
 
             # Generar nombre de archivo si no se proporciona
             if not archivo_salida:
-                timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
                 archivo_salida = f"configuraciones_backup_{timestamp}.json"
 
             # Asegurar extensión .json
-            if not archivo_salida.lower().endswith('.json'):
-                archivo_salida += '.json'
+            if not archivo_salida.lower().endswith(".json"):
+                archivo_salida += ".json"
 
             # Crear directorio si no existe
             archivo_path = Path(archivo_salida)
             archivo_path.parent.mkdir(parents=True, exist_ok=True)
 
             # Escribir JSON
-            with open(archivo_path, 'w', encoding='utf-8') as f:
+            with open(archivo_path, "w", encoding="utf-8") as f:
                 json.dump(datos_exportacion, f, indent=2, ensure_ascii=False)
 
-            mensaje = f"Exportadas {len(configuraciones)} configuraciones a {archivo_path}"
+            mensaje = (
+                f"Exportadas {len(configuraciones)} configuraciones a {archivo_path}"
+            )
             return True, mensaje, str(archivo_path)
 
         except Exception as e:
             logger.error(f"Error al exportar configuraciones a JSON: {e}")
             return False, f"Error al exportar: {str(e)}", None
 
-    def importar_configuraciones_desde_json(self, archivo_entrada: str) -> Tuple[bool, str, Dict[str, Any]]:
+    def importar_configuraciones_desde_json(
+        self, archivo_entrada: str
+    ) -> Tuple[bool, str, Dict[str, Any]]:
         """
         Importar configuraciones desde archivo JSON
 
@@ -733,78 +806,100 @@ class ConfiguracionModel(BaseModel):
                 return False, f"El archivo no existe: {archivo_entrada}", {}
 
             # Leer JSON
-            with open(archivo_path, 'r', encoding='utf-8') as f:
+            with open(archivo_path, "r", encoding="utf-8") as f:
                 datos_importacion = json.load(f)
 
             # Validar estructura
-            if 'configuraciones' not in datos_importacion:
-                return False, "Formato de archivo inválido: falta sección 'configuraciones'", {}
+            if "configuraciones" not in datos_importacion:
+                return (
+                    False,
+                    "Formato de archivo inválido: falta sección 'configuraciones'",
+                    {},
+                )
 
-            configuraciones = datos_importacion['configuraciones']
+            configuraciones = datos_importacion["configuraciones"]
             if not isinstance(configuraciones, list):
-                return False, "Formato de archivo inválido: 'configuraciones' debe ser una lista", {}
+                return (
+                    False,
+                    "Formato de archivo inválido: 'configuraciones' debe ser una lista",
+                    {},
+                )
 
             resultados = {
-                'importadas': 0,
-                'actualizadas': 0,
-                'omitidas': 0,
-                'errores': 0,
-                'detalles': []
+                "importadas": 0,
+                "actualizadas": 0,
+                "omitidas": 0,
+                "errores": 0,
+                "detalles": [],
             }
 
             for config_data in configuraciones:
                 try:
                     # Validar datos mínimos
-                    if 'clave' not in config_data:
-                        resultados['errores'] += 1
-                        resultados['detalles'].append(f"Error: configuración sin clave")
+                    if "clave" not in config_data:
+                        resultados["errores"] += 1
+                        resultados["detalles"].append(f"Error: configuración sin clave")
                         continue
-                    
-                    clave = config_data['clave']
-                    valor = config_data.get('valor', '')
-                    descripcion = config_data.get('descripcion', f"Importada desde backup - {clave}")
+
+                    clave = config_data["clave"]
+                    valor = config_data.get("valor", "")
+                    descripcion = config_data.get(
+                        "descripcion", f"Importada desde backup - {clave}"
+                    )
 
                     # Verificar si ya existe
-                    config_existente = self.obtener_configuracion_por_clave(clave, usar_cache=False)
+                    config_existente = self.obtener_configuracion_por_clave(
+                        clave, usar_cache=False
+                    )
 
                     if config_existente:
                         # Actualizar si el valor es diferente
                         if config_existente.valor != valor:
-                            datos = {'valor': valor}
-                            exito, mensaje, _ = self.actualizar_configuracion(config_existente.id, datos)
+                            datos = {"valor": valor}
+                            exito, mensaje, _ = self.actualizar_configuracion(
+                                config_existente.id, datos
+                            )
                             if exito:
-                                resultados['actualizadas'] += 1
-                                resultados['detalles'].append(f"Actualizada: {clave}")
+                                resultados["actualizadas"] += 1
+                                resultados["detalles"].append(f"Actualizada: {clave}")
                             else:
-                                resultados['errores'] += 1
-                                resultados['detalles'].append(f"Error actualizando {clave}: {mensaje}")
+                                resultados["errores"] += 1
+                                resultados["detalles"].append(
+                                    f"Error actualizando {clave}: {mensaje}"
+                                )
                         else:
-                            resultados['omitidas'] += 1
+                            resultados["omitidas"] += 1
                     else:
                         # Crear nueva configuración
                         datos = {
-                            'clave': clave,
-                            'valor': valor,
-                            'descripcion': descripcion
+                            "clave": clave,
+                            "valor": valor,
+                            "descripcion": descripcion,
                         }
                         exito, mensaje, _ = self.crear_configuracion(datos)
                         if exito:
-                            resultados['importadas'] += 1
-                            resultados['detalles'].append(f"Importada: {clave}")
+                            resultados["importadas"] += 1
+                            resultados["detalles"].append(f"Importada: {clave}")
                         else:
-                            resultados['errores'] += 1
-                            resultados['detalles'].append(f"Error importando {clave}: {mensaje}")
+                            resultados["errores"] += 1
+                            resultados["detalles"].append(
+                                f"Error importando {clave}: {mensaje}"
+                            )
 
                 except Exception as e:
-                    logger.error(f"Error al procesar configuración {config_data.get('clave', 'DESCONOCIDA')}: {e}")
-                    resultados['errores'] += 1
-                    resultados['detalles'].append(f"Error procesando configuración: {str(e)}")
+                    logger.error(
+                        f"Error al procesar configuración {config_data.get('clave', 'DESCONOCIDA')}: {e}"
+                    )
+                    resultados["errores"] += 1
+                    resultados["detalles"].append(
+                        f"Error procesando configuración: {str(e)}"
+                    )
 
             # Limpiar cache después de la importación
             self._cache.clear()
 
             # Determinar mensaje final
-            if resultados['errores'] == 0:
+            if resultados["errores"] == 0:
                 mensaje_final = f"Importación completada: {resultados['importadas']} importadas, {resultados['actualizadas']} actualizadas, {resultados['omitidas']} omitidas"
             else:
                 mensaje_final = f"Importación con errores: {resultados['importadas']} importadas, {resultados['actualizadas']} actualizadas, {resultados['omitidas']} omitidas, {resultados['errores']} errores"
