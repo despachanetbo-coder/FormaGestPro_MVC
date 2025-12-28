@@ -10,7 +10,7 @@ from typing import Dict, List, Any, Optional, Tuple
 from datetime import datetime, date
 
 # Modelos actualizados para PostgreSQL
-from app.models.programa_academico_model import ProgramaAcademicoModel
+from app.models.programa_academico_model import ProgramasAcademicosModel
 from app.models.ingreso_model import IngresoModel  # Reemplaza PagoModel
 from app.models.matricula_model import MatriculaModel
 from app.models.estudiante_model import EstudianteModel
@@ -31,7 +31,7 @@ class ProgramaAcademicoController:
 
     def __init__(self):
         """Inicializa el controlador con los modelos necesarios"""
-        self.programa_model = ProgramaAcademicoModel
+        self.programa_model = ProgramasAcademicosModel
         self.ingreso_model = IngresoModel  # Reemplaza PagoModel
         self.matricula_model = MatriculaModel
         self.estudiante_model = EstudianteModel

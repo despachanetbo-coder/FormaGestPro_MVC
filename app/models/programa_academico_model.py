@@ -401,61 +401,36 @@ class ProgramasAcademicosModel(BaseModel):
 
     # ============ MÉTODOS DE CONSULTA AVANZADOS ============
 
-    def get_all(
-        self,
-        estado: Optional[str] = None,
-        active_only: bool = True,
-        limit: int = 100,
-        offset: int = 0,
-        order_by: str = "created_at",
-        order_desc: bool = True,
-    ) -> List[Dict[str, Any]]:
+    @classmethod
+    def get_all_programas(cls, **kwargs):
+        """Método de clase para obtener todos los programas"""
+        instance = cls()  # Crear instancia
+        return instance.get_all(**kwargs)
+
+    # Y asegurar que el método get_all existente tenga self:
+    def get_all(self, estado=None, active_only=True, limit=100, offset=0):
         """
         Obtiene todos los programas académicos
-
-        Args:
-            estado: Filtrar por estado específico
-            active_only: Si es True, excluye programas CANCELADOS
-            limit: Límite de registros
-            offset: Desplazamiento para paginación
-            order_by: Campo para ordenar
-            order_desc: Si es True, orden descendente
-
-        Returns:
-            List[Dict]: Lista de programas
+        FIX: Ahora es método de instancia
         """
         try:
-            query = f"""
-            SELECT pa.*, 
-                   d.nombres as tutor_nombres, 
-                   d.apellidos as tutor_apellidos
-            FROM {self.table_name} pa
-            LEFT JOIN docentes d ON pa.tutor_id = d.id
+            query = """
+            SELECT * FROM programas_academicos
             """
-
             conditions = []
             params = []
 
             if estado:
-                conditions.append("pa.estado = %s")
+                conditions.append("estado = %s")
                 params.append(estado)
-            elif active_only:
-                conditions.append("pa.estado != %s")
-                params.append("CANCELADO")
 
             if conditions:
                 query += " WHERE " + " AND ".join(conditions)
 
-            # Ordenar
-            order_dir = "DESC" if order_desc else "ASC"
-            query += f" ORDER BY pa.{order_by} {order_dir}"
-
-            # Paginación
             query += " LIMIT %s OFFSET %s"
             params.extend([limit, offset])
 
             return self.fetch_all(query, params)
-
         except Exception as e:
             print(f"✗ Error obteniendo programas académicos: {e}")
             return []
@@ -968,3 +943,6 @@ class ProgramasAcademicosModel(BaseModel):
             List[Dict]: Programas activos
         """
         return self.get_all(active_only=True)
+
+
+ProgramaAcademicoModel = ProgramasAcademicosModel

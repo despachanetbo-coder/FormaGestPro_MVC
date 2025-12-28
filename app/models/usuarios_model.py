@@ -1143,3 +1143,7 @@ class UsuariosModel(BaseModel):
         random.shuffle(password_chars)
 
         return "".join(password_chars)
+
+
+# Agregar al final del archivo app/models/usuarios_model.py:
+UsuarioModel = UsuariosModel  # Alias para compatibilidad

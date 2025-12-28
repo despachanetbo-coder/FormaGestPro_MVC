@@ -459,7 +459,10 @@ class DocentesTab(QWidget):
             self.lbl_estado.setText("Cargando docentes...")
 
             # Obtener todos los docentes
-            self.docentes_data = DocenteModel().get_all()
+            docentes = DocenteModel().get_all()
+
+            # CORRECCIÓN: Asegurar que no sea None
+            self.docentes_data = docentes if docentes is not None else []
 
             # Resetear paginación
             self.current_page = 1
@@ -1174,53 +1177,6 @@ class DocentesTab(QWidget):
         if 1 <= nueva_pagina <= self.total_pages and nueva_pagina != self.current_page:
             self.current_page = nueva_pagina
             self.actualizar_paginacion()
-
-    def filtrar_docentes(self, desde_paginacion=False):
-        """Filtrar docentes según el estado seleccionado y aplicar paginación"""
-        try:
-            # Obtener valores actuales
-            filtro_texto = self.combo_filtro.currentText().lower()
-            texto_busqueda = self.txt_buscar.text().strip().lower()
-
-            # Filtrar docentes
-            docentes_filtrados = []
-            for docente in self.docentes_data:
-                # Filtrar por estado
-                if filtro_texto == "activos" and docente.activo != 1:
-                    continue
-                elif filtro_texto == "inactivos" and docente.activo != 0:
-                    continue
-
-                # Filtrar por búsqueda si hay texto
-                if texto_busqueda:
-                    campos = [
-                        str(docente.nombres or ""),
-                        str(docente.apellidos or ""),
-                        str(docente.ci_numero or ""),
-                        str(getattr(docente, "especialidad", "") or ""),
-                        str(getattr(docente, "grado_academico", "") or ""),
-                    ]
-
-                    if not any(texto_busqueda in campo.lower() for campo in campos):
-                        continue
-
-                docentes_filtrados.append(docente)
-
-            # Actualizar la lista filtrada
-            self.docentes_filtrados_actuales = docentes_filtrados
-
-            # Resetear a página 1 solo si no viene desde paginación
-            if not desde_paginacion:
-                self.current_page = 1
-
-            # Actualizar la paginación
-            self.actualizar_paginacion()
-
-        except Exception as e:
-            logger.error(f"Error al filtrar docentes: {e}")
-            import traceback
-
-            traceback.print_exc()
 
     def mostrar_pagina_actual(self):
         """Mostrar la página actual de docentes"""

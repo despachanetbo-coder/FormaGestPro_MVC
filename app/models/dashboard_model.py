@@ -17,9 +17,9 @@ class DashboardModel(BaseModel):
     def _ensure_connection(self):
         """Asegura que hay una conexión activa a la base de datos"""
         if not hasattr(self, "connection") or self.connection is None:
-            from app.database.connection import PostgreSQLConnection
+            from app.database.connection import DatabaseConnection
 
-            self.connection = PostgreSQLConnection().get_connection()
+            self.connection = DatabaseConnection().get_connection()
 
     # ============ MÉTODOS PARA ESTUDIANTES ============
 
@@ -463,14 +463,138 @@ class DashboardModel(BaseModel):
 
     # ============ MÉTODOS DE COMPATIBILIDAD ============
 
-    def estudiantes_por_programa(self):
-        """Método de compatibilidad con nombres antiguos"""
-        return self.get_estudiantes_por_programa()
 
-    def docentes_por_departamento(self):
-        """Método de compatibilidad con nombres antiguos"""
-        return self.get_docentes_por_departamento()
+# app/models/dashboard_model.py - VERSIÓN CORREGIDA
+import sys
+import os
+from datetime import datetime
 
-    def cursos_activos(self):
-        """Método de compatibilidad con nombres antiguos"""
-        return self.get_cursos_activos()
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from .base_model import BaseModel
+
+
+class DashboardModel(BaseModel):
+    """Modelo para el dashboard con estadísticas del sistema"""
+
+    def __init__(self):
+        """Inicializa el modelo del dashboard"""
+        super().__init__()
+
+    # ============ MÉTODOS CORREGIDOS ============
+
+    def get_estudiantes_por_programa(self, estado="Activo", limit=10):
+        """
+        Obtiene la cantidad de estudiantes por programa
+        CORRECCIÓN: Cambiar 'estado' por 'activo' (columna correcta en PostgreSQL)
+        """
+        try:
+            if estado == "Todos":
+                query = """
+                SELECT 
+                    COALESCE(p.nombre, 'Sin programa') as programa,
+                    COUNT(e.id) as cantidad
+                FROM estudiantes e
+                LEFT JOIN programas p ON e.programa_id = p.id
+                GROUP BY p.nombre
+                ORDER BY cantidad DESC
+                LIMIT %s
+                """
+                params = (limit,)
+            else:
+                # CORRECCIÓN: Cambiar 'estado' por 'activo' (booleano)
+                estado_bool = True if estado == "Activo" else False
+                query = """
+                SELECT 
+                    COALESCE(p.nombre, 'Sin programa') as programa,
+                    COUNT(e.id) as cantidad
+                FROM estudiantes e
+                LEFT JOIN programas p ON e.programa_id = p.id
+                WHERE e.activo = %s
+                GROUP BY p.nombre
+                ORDER BY cantidad DESC
+                LIMIT %s
+                """
+                params = (estado_bool, limit)
+
+            return self.fetch_all(query, params)  # Usar fetch_all de BaseModel
+        except Exception as e:
+            print(f"✗ Error obteniendo estudiantes por programa: {e}")
+            return []
+
+    def get_docentes_por_departamento(self, estado="Activo", limit=10):
+        """
+        Obtiene la cantidad de docentes por departamento
+        CORRECCIÓN: Cambiar 'estado' por 'activo'
+        """
+        try:
+            if estado == "Todos":
+                query = """
+                SELECT 
+                    COALESCE(d.nombre, 'Sin departamento') as departamento,
+                    COUNT(doc.id) as cantidad
+                FROM docentes doc
+                LEFT JOIN departamentos d ON doc.departamento_id = d.id
+                GROUP BY d.nombre
+                ORDER BY cantidad DESC
+                LIMIT %s
+                """
+                params = (limit,)
+            else:
+                # CORRECCIÓN: Cambiar 'estado' por 'activo' (booleano)
+                estado_bool = True if estado == "Activo" else False
+                query = """
+                SELECT 
+                    COALESCE(d.nombre, 'Sin departamento') as departamento,
+                    COUNT(doc.id) as cantidad
+                FROM docentes doc
+                LEFT JOIN departamentos d ON doc.departamento_id = d.id
+                WHERE doc.activo = %s
+                GROUP BY d.nombre
+                ORDER BY cantidad DESC
+                LIMIT %s
+                """
+                params = (estado_bool, limit)
+
+            return self.fetch_all(query, params)  # Usar fetch_all de BaseModel
+        except Exception as e:
+            print(f"✗ Error obteniendo docentes por departamento: {e}")
+            return []
+
+    def get_cursos_activos(self):
+        """
+        Obtiene el número de cursos activos
+        CORRECCIÓN: La tabla 'cursos' NO EXISTE según el error
+        """
+        try:
+            # CORRECCIÓN: Si no existe tabla 'cursos', devolver 0
+            if not self.table_exists("cursos"):
+                print("⚠ La tabla 'cursos' no existe en la base de datos")
+                return 0
+
+            query = """
+            SELECT COUNT(*) as total 
+            FROM cursos 
+            WHERE estado = 'Activo' OR estado = 'activo'
+            """
+            result = self.fetch_one(query)
+            return result["total"] if result else 0
+        except Exception as e:
+            print(f"✗ Error obteniendo cursos activos: {e}")
+            return 0
+
+    def table_exists(self, table_name):
+        """Verifica si una tabla existe"""
+        try:
+            query = """
+            SELECT EXISTS (
+                SELECT FROM information_schema.tables 
+                WHERE table_schema = 'public' 
+                AND table_name = %s
+            )
+            """
+            result = self.fetch_one(query, (table_name,))
+            return result["exists"] if result else False
+        except Exception as e:
+            print(f"✗ Error verificando existencia de tabla: {e}")
+            return False

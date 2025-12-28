@@ -1,1360 +1,622 @@
-# app/models/ingreso_model.py - Versión optimizada y robusta
+# app/models/ingreso_model.py
+"""
+Modelo para gestión de ingresos - FormaGestPro MVC
+Hereda de BaseModel para conexión a PostgreSQL
+"""
+
 import sys
 import os
-
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
-from .base_model import BaseModel
 from datetime import datetime, date
 from decimal import Decimal
 from typing import Optional, List, Dict, Any, Tuple, Union
 
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from .base_model import BaseModel
+
 
 class IngresoModel(BaseModel):
-    def __init__(self):
-        """Inicializa el modelo de ingresos"""
+    """
+    Modelo para gestión de ingresos en el sistema FormaGestPro
+
+    Atributos:
+        - id: Identificador único
+        - tipo_ingreso: Tipo de ingreso (MATRICULA_CUOTA, MATRICULA_CONTADO, OTRO_INGRESO)
+        - matricula_id: ID de la matrícula asociada (opcional)
+        - nro_cuota: Número de cuota (para pagos por cuotas)
+        - fecha: Fecha del ingreso
+        - monto: Monto del ingreso
+        - concepto: Concepto del ingreso
+        - descripcion: Descripción adicional
+        - forma_pago: Forma de pago (EFECTIVO, TRANSFERENCIA, TARJETA, etc.)
+        - estado: Estado del ingreso (REGISTRADO, CONFIRMADO, ANULADO)
+        - nro_comprobante: Número de comprobante
+        - nro_transaccion: Número de transacción bancaria
+        - registrado_por: ID del usuario que registró el ingreso
+        - created_at: Fecha de creación
+    """
+
+    # Constantes de tipo de ingreso (coinciden con el controlador)
+    TIPO_MATRICULA_CUOTA = "MATRICULA_CUOTA"
+    TIPO_MATRICULA_CONTADO = "MATRICULA_CONTADO"
+    TIPO_OTRO_INGRESO = "OTRO_INGRESO"
+
+    # Constantes de estado (coinciden con el controlador)
+    ESTADO_REGISTRADO = "REGISTRADO"
+    ESTADO_CONFIRMADO = "CONFIRMADO"
+    ESTADO_ANULADO = "ANULADO"
+
+    # Constantes de formas de pago
+    FORMA_EFECTIVO = "EFECTIVO"
+    FORMA_TRANSFERENCIA = "TRANSFERENCIA"
+    FORMA_TARJETA_CREDITO = "TARJETA_CREDITO"
+    FORMA_TARJETA_DEBITO = "TARJETA_DEBITO"
+    FORMA_DEPOSITO = "DEPOSITO"
+    FORMA_CHEQUE = "CHEQUE"
+
+    def __init__(self, **kwargs):
+        """
+        Inicializa un nuevo ingreso
+
+        Args:
+            **kwargs: Atributos del ingreso
+        """
         super().__init__()
         self.table_name = "ingresos"
-        self.sequence_name = "seq_ingresos_id"
 
-        # Tipos enumerados según la base de datos
-        self.TIPOS_INGRESO = ["MATRICULA_CUOTA", "MATRICULA_CONTADO", "OTRO_INGRESO"]
-        self.FORMAS_PAGO = [
-            "EFECTIVO",
-            "TRANSFERENCIA",
-            "TARJETA_CREDITO",
-            "TARJETA_DEBITO",
-            "DEPOSITO",
-            "CHEQUE",
-        ]
-        self.ESTADOS_TRANSACCION = [
-            "REGISTRADO",
-            "CONFIRMADO",
-            "ANULADO",
-            "DEVUELTO",
-            "CONTABILIZADO",
-        ]
+        # Atributos del modelo
+        self.id = kwargs.get("id")
+        self.tipo_ingreso = kwargs.get("tipo_ingreso", self.TIPO_OTRO_INGRESO)
+        self.matricula_id = kwargs.get("matricula_id")
+        self.nro_cuota = kwargs.get("nro_cuota")
+        self.fecha = kwargs.get("fecha", date.today().isoformat())
+        self.monto = kwargs.get("monto", 0.0)
+        self.concepto = kwargs.get("concepto", "")
+        self.descripcion = kwargs.get("descripcion", "")
+        self.forma_pago = kwargs.get("forma_pago", self.FORMA_EFECTIVO)
+        self.estado = kwargs.get("estado", self.ESTADO_REGISTRADO)
+        self.nro_comprobante = kwargs.get("nro_comprobante")
+        self.nro_transaccion = kwargs.get("nro_transaccion")
+        self.registrado_por = kwargs.get("registrado_por")
+        self.created_at = kwargs.get("created_at", datetime.now().isoformat())
 
-        # Columnas de la tabla para validación
-        self.columns = [
-            "id",
-            "tipo_ingreso",
-            "matricula_id",
-            "nro_cuota",
-            "fecha",
-            "monto",
-            "concepto",
-            "descripcion",
-            "forma_pago",
-            "estado",
-            "nro_comprobante",
-            "nro_transaccion",
-            "registrado_por",
-            "created_at",
-        ]
+        # Validar datos requeridos
+        self._validate_required_fields()
 
-        # Columnas requeridas
-        self.required_columns = ["tipo_ingreso", "fecha", "monto", "concepto"]
+    def _validate_required_fields(self):
+        """Valida campos requeridos"""
+        if not self.tipo_ingreso:
+            raise ValueError("El tipo de ingreso es requerido")
+        if not self.fecha:
+            raise ValueError("La fecha es requerida")
+        if not self.monto or self.monto <= 0:
+            raise ValueError("El monto debe ser mayor a 0")
+        if not self.concepto:
+            raise ValueError("El concepto es requerido")
+        if not self.forma_pago:
+            raise ValueError("La forma de pago es requerida")
 
-        # Columnas de tipo decimal
-        self.decimal_columns = ["monto"]
-
-        # Columnas de tipo entero
-        self.integer_columns = ["matricula_id", "nro_cuota", "registrado_por"]
-
-        # Columnas de tipo fecha
-        self.date_columns = ["fecha"]
-
-    # ============ MÉTODOS DE VALIDACIÓN ============
-
-    def _validate_ingreso_data(
-        self, data: Dict[str, Any], for_update: bool = False
-    ) -> Tuple[bool, str]:
+    def save(self) -> Optional[int]:
         """
-        Valida los datos del ingreso
-
-        Args:
-            data: Diccionario con datos del ingreso
-            for_update: Si es True, valida para actualización
+        Guarda el ingreso en la base de datos
 
         Returns:
-            Tuple[bool, str]: (es_válido, mensaje_error)
+            Optional[int]: ID del ingreso guardado o None si hay error
         """
-        # Campos requeridos para creación
-        if not for_update:
-            for field in self.required_columns:
-                if field not in data or data[field] is None:
-                    return False, f"Campo requerido faltante: {field}"
-
-        # Validar tipo de ingreso
-        if "tipo_ingreso" in data and data["tipo_ingreso"]:
-            if data["tipo_ingreso"] not in self.TIPOS_INGRESO:
-                return (
-                    False,
-                    f"Tipo de ingreso inválido. Use: {', '.join(self.TIPOS_INGRESO)}",
-                )
-
-        # Validar consistencia entre tipo de ingreso y matrícula
-        if "tipo_ingreso" in data and data["tipo_ingreso"]:
-            tipo = data["tipo_ingreso"]
-            matricula_id = data.get("matricula_id")
-
-            if tipo in ["MATRICULA_CUOTA", "MATRICULA_CONTADO"] and not matricula_id:
-                return False, f"Tipo {tipo} requiere matrícula asociada"
-            elif tipo == "OTRO_INGRESO" and matricula_id:
-                return False, "Tipo OTRO_INGRESO no debe tener matrícula asociada"
-
-        # Validar número de cuota si se proporciona
-        if "nro_cuota" in data and data["nro_cuota"] is not None:
-            try:
-                nro_cuota = int(data["nro_cuota"])
-                if nro_cuota <= 0:
-                    return False, "El número de cuota debe ser mayor a 0"
-
-                # Validar que si hay número de cuota, el tipo sea MATRICULA_CUOTA
-                if "tipo_ingreso" in data and data["tipo_ingreso"] != "MATRICULA_CUOTA":
-                    return (
-                        False,
-                        "Número de cuota solo válido para tipo MATRICULA_CUOTA",
-                    )
-            except (ValueError, TypeError):
-                return False, "Número de cuota inválido"
-
-        # Validar monto positivo
-        if "monto" in data and data["monto"] is not None:
-            try:
-                monto = Decimal(str(data["monto"]))
-                if monto <= 0:
-                    return False, "El monto debe ser mayor a 0"
-            except (ValueError, TypeError):
-                return False, "Monto inválido. Debe ser un número decimal positivo"
-
-        # Validar forma de pago si se proporciona
-        if "forma_pago" in data and data["forma_pago"]:
-            if data["forma_pago"] not in self.FORMAS_PAGO:
-                return (
-                    False,
-                    f"Forma de pago inválida. Use: {', '.join(self.FORMAS_PAGO)}",
-                )
-
-        # Validar estado si se proporciona
-        if "estado" in data and data["estado"]:
-            if data["estado"] not in self.ESTADOS_TRANSACCION:
-                return (
-                    False,
-                    f"Estado inválido. Use: {', '.join(self.ESTADOS_TRANSACCION)}",
-                )
-
-        # Validar número de comprobante único si se proporciona
-        if "nro_comprobante" in data and data["nro_comprobante"]:
-            existing_id = None
-            if for_update and "id" in data:
-                existing_id = data["id"]
-
-            if self.comprobante_exists(data["nro_comprobante"], exclude_id=existing_id):
-                return (
-                    False,
-                    f"El número de comprobante {data['nro_comprobante']} ya existe",
-                )
-
-        # Validar matrícula si se proporciona
-        if "matricula_id" in data and data["matricula_id"]:
-            if not self._matricula_exists(data["matricula_id"]):
-                return False, f"Matrícula con ID {data['matricula_id']} no existe"
-
-            # Validar unicidad matrícula-tipo_ingreso
-            if "tipo_ingreso" in data and data["tipo_ingreso"]:
-                existing_id = None
-                if for_update and "id" in data:
-                    existing_id = data["id"]
-
-                if self.matricula_tipo_exists(
-                    data["matricula_id"], data["tipo_ingreso"], exclude_id=existing_id
-                ):
-                    return (
-                        False,
-                        f"Ya existe un ingreso del tipo {data['tipo_ingreso']} para esta matrícula",
-                    )
-
-        # Validar usuario registrador si se proporciona
-        if "registrado_por" in data and data["registrado_por"]:
-            if not self._usuario_exists(data["registrado_por"]):
-                return False, f"Usuario con ID {data['registrado_por']} no existe"
-
-        # Validar fecha si se proporciona
-        if "fecha" in data and data["fecha"]:
-            if not self._is_valid_date(data["fecha"]):
-                return False, "Formato de fecha inválido. Use YYYY-MM-DD"
-
-            # No permitir fechas futuras
-            try:
-                fecha_ing = (
-                    datetime.strptime(data["fecha"], "%Y-%m-%d").date()
-                    if isinstance(data["fecha"], str)
-                    else data["fecha"]
-                )
-                if fecha_ing > date.today():
-                    return False, "No se pueden registrar ingresos con fecha futura"
-            except:
-                pass
-
-        return True, "Datos válidos"
-
-    def _is_valid_date(self, date_value: Any) -> bool:
-        """Valida formato de fecha"""
-        if isinstance(date_value, str):
-            try:
-                datetime.strptime(date_value, "%Y-%m-%d")
-                return True
-            except ValueError:
-                return False
-        elif isinstance(date_value, (datetime, date)):
-            return True
-        return False
-
-    def _matricula_exists(self, matricula_id: int) -> bool:
-        """Verifica si la matrícula existe"""
         try:
-            query = "SELECT COUNT(*) as count FROM matriculas WHERE id = %s"
-            result = self.fetch_one(query, (matricula_id,))
-            return result["count"] > 0 if result else False
-        except:
-            return False
-
-    def _usuario_exists(self, usuario_id: int) -> bool:
-        """Verifica si el usuario existe"""
-        try:
-            query = (
-                "SELECT COUNT(*) as count FROM usuarios WHERE id = %s AND activo = TRUE"
-            )
-            result = self.fetch_one(query, (usuario_id,))
-            return result["count"] > 0 if result else False
-        except:
-            return False
-
-    def _sanitize_data(self, data: Dict[str, Any]) -> Dict[str, Any]:
-        """
-        Sanitiza los datos del ingreso
-
-        Args:
-            data: Diccionario con datos crudos
-
-        Returns:
-            Dict[str, Any]: Datos sanitizados
-        """
-        sanitized = {}
-
-        for key, value in data.items():
-            if key in self.columns:
-                # Sanitizar strings
-                if isinstance(value, str):
-                    sanitized[key] = value.strip()
-                # Convertir decimales
-                elif key in self.decimal_columns and value is not None:
-                    try:
-                        sanitized[key] = Decimal(str(value))
-                    except:
-                        sanitized[key] = value
-                # Convertir enteros
-                elif key in self.integer_columns and value is not None:
-                    try:
-                        sanitized[key] = int(value)
-                    except:
-                        sanitized[key] = value
-                # Formatear fecha
-                elif key in self.date_columns and value is not None:
-                    if isinstance(value, str):
-                        sanitized[key] = value
-                    elif isinstance(value, datetime):
-                        sanitized[key] = value.strftime("%Y-%m-%d")
-                    elif isinstance(value, date):
-                        sanitized[key] = value.strftime("%Y-%m-%d")
-                # Mantener otros tipos
-                else:
-                    sanitized[key] = value
-
-        return sanitized
-
-    # ============ MÉTODOS CRUD PRINCIPALES ============
-
-    def create(
-        self, data: Dict[str, Any], usuario_id: Optional[int] = None
-    ) -> Optional[int]:
-        """
-        Crea un nuevo ingreso
-
-        Args:
-            data: Diccionario con datos del ingreso
-            usuario_id: ID del usuario que registra el ingreso
-
-        Returns:
-            Optional[int]: ID del ingreso creado o None si hay error
-        """
-        # Sanitizar datos
-        data = self._sanitize_data(data)
-
-        # Añadir usuario registrador si se proporciona
-        if usuario_id:
-            data["registrado_por"] = usuario_id
-
-        # Validar datos
-        is_valid, error_msg = self._validate_ingreso_data(data, for_update=False)
-
-        if not is_valid:
-            print(f"✗ Error validando datos: {error_msg}")
-            return None
-
-        try:
-            # Iniciar transacción
-            self.begin_transaction()
-
             # Preparar datos para inserción
-            insert_data = data.copy()
-
-            # Establecer valores por defecto
-            defaults = {
-                "estado": "REGISTRADO",
-                "created_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            data = {
+                "tipo_ingreso": self.tipo_ingreso,
+                "fecha": self.fecha,
+                "monto": float(self.monto),  # Convertir a float para PostgreSQL
+                "concepto": self.concepto,
+                "forma_pago": self.forma_pago,
+                "estado": self.estado,
+                "created_at": self.created_at,
             }
 
-            for key, value in defaults.items():
-                if key not in insert_data or insert_data[key] is None:
-                    insert_data[key] = value
+            # Campos opcionales
+            if self.matricula_id:
+                data["matricula_id"] = self.matricula_id
+            if self.nro_cuota is not None:
+                data["nro_cuota"] = self.nro_cuota
+            if self.descripcion:
+                data["descripcion"] = self.descripcion
+            if self.nro_comprobante:
+                data["nro_comprobante"] = self.nro_comprobante
+            if self.nro_transaccion:
+                data["nro_transaccion"] = self.nro_transaccion
+            if self.registrado_por:
+                data["registrado_por"] = self.registrado_por
 
             # Insertar en base de datos
-            result = self.insert(self.table_name, insert_data, returning="id")
+            result = self.insert(self.table_name, data, returning="id")
 
             if result:
-                print(f"✓ Ingreso creado exitosamente con ID: {result}")
-
-                # Registrar movimiento en caja
-                movimiento_creado = self._registrar_movimiento_caja(
-                    result, insert_data, usuario_id
-                )
-
-                if movimiento_creado:
-                    # Actualizar estado de pago en matrícula si es de tipo matrícula
-                    if insert_data.get("tipo_ingreso") in [
-                        "MATRICULA_CUOTA",
-                        "MATRICULA_CONTADO",
-                    ]:
-                        matricula_id = insert_data.get("matricula_id")
-                        if matricula_id is not None and isinstance(matricula_id, int):
-                            self._actualizar_estado_matricula(matricula_id, result)
-
-                    # Commit de la transacción
-                    self.commit()
-                    print(f"✓ Transacción completada para ingreso ID: {result}")
-                    return result
-                else:
-                    # Rollback si no se pudo crear movimiento en caja
-                    self.rollback()
-                    print(f"✗ Rollback: No se pudo registrar movimiento en caja")
-                    return None
+                self.id = result
+                return result
 
             return None
 
         except Exception as e:
-            # Rollback en caso de error
-            self.rollback()
-            print(f"✗ Error creando ingreso: {e}")
+            print(f"✗ Error guardando ingreso: {e}")
             return None
 
-    def read(self, ingreso_id: int) -> Optional[Dict[str, Any]]:
+    def to_dict(self) -> Dict[str, Any]:
         """
-        Obtiene un ingreso por su ID
-
-        Args:
-            ingreso_id: ID del ingreso
+        Convierte el objeto a diccionario
 
         Returns:
-            Optional[Dict]: Datos del ingreso o None si no existe
+            Dict[str, Any]: Diccionario con todos los atributos
         """
-        try:
-            query = f"""
-            SELECT i.*,
-                   m.estudiante_id,
-                   e.nombres as estudiante_nombres,
-                   e.apellidos as estudiante_apellidos,
-                   p.nombre as programa_nombre,
-                   u.username as registrado_por_usuario,
-                   u.nombre_completo as registrado_por_nombre
-            FROM {self.table_name} i
-            LEFT JOIN matriculas m ON i.matricula_id = m.id
-            LEFT JOIN estudiantes e ON m.estudiante_id = e.id
-            LEFT JOIN programas_academicos p ON m.programa_id = p.id
-            LEFT JOIN usuarios u ON i.registrado_por = u.id
-            WHERE i.id = %s
-            """
+        return {
+            "id": self.id,
+            "tipo_ingreso": self.tipo_ingreso,
+            "matricula_id": self.matricula_id,
+            "nro_cuota": self.nro_cuota,
+            "fecha": self.fecha,
+            "monto": self.monto,
+            "concepto": self.concepto,
+            "descripcion": self.descripcion,
+            "forma_pago": self.forma_pago,
+            "estado": self.estado,
+            "nro_comprobante": self.nro_comprobante,
+            "nro_transaccion": self.nro_transaccion,
+            "registrado_por": self.registrado_por,
+            "created_at": self.created_at,
+        }
 
-            result = self.fetch_one(query, (ingreso_id,))
-            return result
-
-        except Exception as e:
-            print(f"✗ Error obteniendo ingreso: {e}")
-            return None
-
-    def update(
-        self, ingreso_id: int, data: Dict[str, Any], usuario_id: Optional[int] = None
-    ) -> bool:
+    def update(self) -> bool:
         """
-        Actualiza un ingreso existente
-
-        Args:
-            ingreso_id: ID del ingreso a actualizar
-            data: Diccionario con datos a actualizar
-            usuario_id: ID del usuario que realiza la actualización
-
-        Returns:
-            bool: True si se actualizó correctamente, False en caso contrario
-        """
-        if not data:
-            return False
-
-        # Obtener datos actuales para validación
-        ingreso_actual = self.read(ingreso_id)
-        if not ingreso_actual:
-            return False
-
-        # No permitir actualizar ingresos confirmados o contabilizados
-        if ingreso_actual["estado"] in ["CONFIRMADO", "CONTABILIZADO"]:
-            print(
-                f"✗ No se puede actualizar un ingreso en estado: {ingreso_actual['estado']}"
-            )
-            return False
-
-        # Combinar datos actuales con los nuevos para validación
-        data_with_id = {**ingreso_actual, **data}
-        data_with_id["id"] = ingreso_id
-
-        # Sanitizar y validar datos
-        data = self._sanitize_data(data)
-        is_valid, error_msg = self._validate_ingreso_data(data_with_id, for_update=True)
-
-        if not is_valid:
-            print(f"✗ Error validando datos: {error_msg}")
-            return False
-
-        try:
-            # Iniciar transacción
-            self.begin_transaction()
-
-            # Actualizar en base de datos
-            result = self.update_table(self.table_name, data, "id = %s", (ingreso_id,))
-
-            if result:
-                print(f"✓ Ingreso {ingreso_id} actualizado exitosamente")
-
-                # Si cambió el monto, actualizar movimiento en caja
-                if "monto" in data and Decimal(str(data["monto"])) != Decimal(
-                    str(ingreso_actual["monto"])
-                ):
-                    self._actualizar_movimiento_caja(ingreso_id, data)
-
-                # Registrar auditoría
-                self._registrar_auditoria("ACTUALIZACION", ingreso_id, usuario_id)
-
-                # Commit de la transacción
-                self.commit()
-                return True
-
-            return False
-
-        except Exception as e:
-            # Rollback en caso de error
-            self.rollback()
-            print(f"✗ Error actualizando ingreso: {e}")
-            return False
-
-    def delete(self, ingreso_id: int, usuario_id: Optional[int] = None) -> bool:
-        """
-        Elimina un ingreso (solo si está en estado REGISTRADO)
-
-        Args:
-            ingreso_id: ID del ingreso
-            usuario_id: ID del usuario que realiza la eliminación
-
-        Returns:
-            bool: True si se eliminó correctamente, False en caso contrario
-        """
-        try:
-            # Verificar estado del ingreso
-            ingreso = self.read(ingreso_id)
-            if not ingreso:
-                return False
-
-            if ingreso["estado"] != "REGISTRADO":
-                print(
-                    f"✗ No se puede eliminar un ingreso en estado: {ingreso['estado']}"
-                )
-                return False
-
-            # Iniciar transacción
-            self.begin_transaction()
-
-            # Eliminar movimiento en caja asociado
-            movimiento_eliminado = self._eliminar_movimiento_caja(ingreso_id)
-
-            if not movimiento_eliminado:
-                print("✗ No se pudo eliminar movimiento en caja asociado")
-                self.rollback()
-                return False
-
-            # Eliminar ingreso
-            query = f"DELETE FROM {self.table_name} WHERE id = %s"
-            result = self.execute_query(query, (ingreso_id,), commit=False)
-
-            if result:
-                # Registrar auditoría
-                self._registrar_auditoria("ELIMINACION", ingreso_id, usuario_id)
-
-                # Commit de la transacción
-                self.commit()
-                print(f"✓ Ingreso {ingreso_id} eliminado exitosamente")
-                return True
-
-            self.rollback()
-            return False
-
-        except Exception as e:
-            self.rollback()
-            print(f"✗ Error eliminando ingreso: {e}")
-            return False
-
-    # ============ MÉTODOS DE MOVIMIENTO DE CAJA ============
-
-    def _registrar_movimiento_caja(
-        self, ingreso_id: int, data: Dict[str, Any], usuario_id: Optional[int] = None
-    ) -> bool:
-        """
-        Registra un movimiento en caja para el ingreso
-
-        Args:
-            ingreso_id: ID del ingreso
-            data: Datos del ingreso
-            usuario_id: ID del usuario que registra
-
-        Returns:
-            bool: True si se registró correctamente
-        """
-        try:
-            # Importar modelo de movimiento de caja
-            from models.movimiento_caja_model import MovimientoCajaModel
-
-            movimiento_model = MovimientoCajaModel()
-
-            # Preparar datos del movimiento
-            movimiento_data = {
-                "tipo": "INGRESO",
-                "monto": data["monto"],
-                "origen_tipo": "INGRESO",
-                "origen_id": ingreso_id,
-                "descripcion": data.get("concepto", "Ingreso registrado"),
-                "registrado_por": usuario_id,
-                "fecha": data.get("fecha", date.today().strftime("%Y-%m-%d")),
-            }
-
-            # Crear movimiento en caja
-            movimiento_id = movimiento_model.create(movimiento_data, usuario_id)
-
-            if movimiento_id:
-                print(f"✓ Movimiento en caja registrado con ID: {movimiento_id}")
-                return True
-
-            return False
-
-        except Exception as e:
-            print(f"✗ Error registrando movimiento en caja: {e}")
-            return False
-
-    def _actualizar_movimiento_caja(
-        self, ingreso_id: int, data: Dict[str, Any]
-    ) -> bool:
-        """
-        Actualiza el movimiento en caja asociado al ingreso
-
-        Args:
-            ingreso_id: ID del ingreso
-            data: Nuevos datos del ingreso
+        Actualiza el ingreso en la base de datos
 
         Returns:
             bool: True si se actualizó correctamente
         """
-        try:
-            # Importar modelo de movimiento de caja
-            from models.movimiento_caja_model import MovimientoCajaModel
-
-            movimiento_model = MovimientoCajaModel()
-
-            # Buscar movimiento asociado
-            movimiento = movimiento_model.get_by_origen("INGRESO", ingreso_id)
-
-            if not movimiento:
-                print("⚠ No se encontró movimiento en caja asociado")
-                return False
-
-            # Actualizar monto si cambió
-            if "monto" in data:
-                update_data = {
-                    "monto": data["monto"],
-                    "descripcion": data.get("concepto", movimiento.get("descripcion")),
-                }
-
-                return movimiento_model.update(movimiento["id"], update_data)
-
-            return True
-
-        except Exception as e:
-            print(f"✗ Error actualizando movimiento en caja: {e}")
+        if not self.id:
             return False
 
-    def _eliminar_movimiento_caja(self, ingreso_id: int) -> bool:
-        """
-        Elimina el movimiento en caja asociado al ingreso
+        try:
+            data = self.to_dict()
+            # No actualizar ID ni created_at
+            del data["id"]
+            del data["created_at"]
 
-        Args:
-            ingreso_id: ID del ingreso
+            condition = "id = %s"
+            params = (self.id,)
+
+            result = self.update_table(self.table_name, data, condition, params)
+            return result is not None
+
+        except Exception as e:
+            print(f"✗ Error actualizando ingreso: {e}")
+            return False
+
+    def delete(self) -> bool:
+        """
+        Elimina el ingreso de la base de datos
 
         Returns:
             bool: True si se eliminó correctamente
         """
-        try:
-            # Importar modelo de movimiento de caja
-            from models.movimiento_caja_model import MovimientoCajaModel
-
-            movimiento_model = MovimientoCajaModel()
-
-            # Buscar movimiento asociado
-            movimiento = movimiento_model.get_by_origen("INGRESO", ingreso_id)
-
-            if not movimiento:
-                print("⚠ No se encontró movimiento en caja asociado")
-                return False
-
-            # Eliminar movimiento
-            return movimiento_model.delete(movimiento["id"])
-
-        except Exception as e:
-            print(f"✗ Error eliminando movimiento en caja: {e}")
-            return False
-
-    # ============ MÉTODOS DE GESTIÓN DE ESTADOS ============
-
-    def cambiar_estado(
-        self, ingreso_id: int, nuevo_estado: str, usuario_id: Optional[int] = None
-    ) -> bool:
-        """
-        Cambia el estado de un ingreso
-
-        Args:
-            ingreso_id: ID del ingreso
-            nuevo_estado: Nuevo estado del ingreso
-            usuario_id: ID del usuario que realiza el cambio
-
-        Returns:
-            bool: True si se cambió correctamente
-        """
-        if nuevo_estado not in self.ESTADOS_TRANSACCION:
-            print(f"✗ Estado inválido: {nuevo_estado}")
+        if not self.id:
             return False
 
         try:
-            data = {"estado": nuevo_estado}
+            condition = "id = %s"
+            params = (self.id,)
 
-            # Si se confirma, registrar fecha de confirmación
-            if nuevo_estado == "CONFIRMADO":
-                # En una implementación completa, se podría agregar un campo fecha_confirmacion
-                pass
-
-            # Si se anula, también anular movimiento en caja
-            elif nuevo_estado == "ANULADO":
-                self._anular_movimiento_caja(ingreso_id)
-
-            return self.update(ingreso_id, data, usuario_id)
+            result = self.delete_rows(self.table_name, condition, params)
+            return result is not None
 
         except Exception as e:
-            print(f"✗ Error cambiando estado del ingreso: {e}")
+            print(f"✗ Error eliminando ingreso: {e}")
             return False
 
-    def _anular_movimiento_caja(self, ingreso_id: int) -> bool:
+    def marcar_como_confirmado(self) -> bool:
         """
-        Anula el movimiento en caja asociado al ingreso
-
-        Args:
-            ingreso_id: ID del ingreso
-
-        Returns:
-            bool: True si se anuló correctamente
-        """
-        try:
-            # Importar modelo de movimiento de caja
-            from models.movimiento_caja_model import MovimientoCajaModel
-
-            movimiento_model = MovimientoCajaModel()
-
-            # Buscar movimiento asociado
-            movimiento = movimiento_model.get_by_origen("INGRESO", ingreso_id)
-
-            if not movimiento:
-                return False
-
-            # En una implementación completa, se marcaría el movimiento como anulado
-            # Por ahora, simplemente actualizamos la descripción
-            update_data = {
-                "descripcion": f"ANULADO - {movimiento.get('descripcion', '')}"
-            }
-
-            return movimiento_model.update(movimiento["id"], update_data)
-
-        except Exception as e:
-            print(f"✗ Error anulando movimiento en caja: {e}")
-            return False
-
-    def _actualizar_estado_matricula(self, matricula_id: int, ingreso_id: int) -> bool:
-        """
-        Actualiza el estado de pago en la matrícula
-
-        Args:
-            matricula_id: ID de la matrícula
-            ingreso_id: ID del ingreso registrado
+        Marca el ingreso como confirmado
 
         Returns:
             bool: True si se actualizó correctamente
         """
+        self.estado = self.ESTADO_CONFIRMADO
+        return self.update()
+
+    def marcar_como_anulado(
+        self, motivo: str = None  # type:ignore
+    ) -> bool:
+        """
+        Marca el ingreso como anulado
+
+        Args:
+            motivo: Motivo de la anulación (opcional)
+
+        Returns:
+            bool: True si se actualizó correctamente
+        """
+        self.estado = self.ESTADO_ANULADO
+        if motivo and not self.descripcion:
+            self.descripcion = f"Anulado: {motivo}"
+        elif motivo:
+            self.descripcion += f"\nAnulado: {motivo}"
+
+        return self.update()
+
+    # ============ MÉTODOS DE CLASE (STATIC) ============
+
+    @classmethod
+    def find_by_id(cls, ingreso_id: int) -> Optional["IngresoModel"]:
+        """
+        Busca un ingreso por su ID
+
+        Args:
+            ingreso_id: ID del ingreso
+
+        Returns:
+            Optional[IngresoModel]: Instancia del modelo o None si no existe
+        """
         try:
-            if not matricula_id:
-                return False
+            instance = cls()
+            query = "SELECT * FROM ingresos WHERE id = %s"
+            result = instance.fetch_one(query, (ingreso_id,))
 
-            # Importar modelo de matrícula
-            from models.matricula_model import MatriculaModel
+            if result:
+                return cls(**result)
 
-            matricula_model = MatriculaModel()
-
-            # Obtener matrícula
-            matricula = matricula_model.read(matricula_id)
-            if not matricula:
-                return False
-
-            # Obtener total pagado de matrícula
-            total_pagado = self.get_total_pagado_matricula(matricula_id)
-            monto_final = Decimal(str(matricula.get("monto_final", 0)))
-
-            # Actualizar monto pagado en matrícula
-            data = {"monto_pagado": float(total_pagado)}
-            return matricula_model.update(matricula_id, data)
+            return None
 
         except Exception as e:
-            print(f"✗ Error actualizando estado de matrícula: {e}")
-            return False
+            print(f"✗ Error buscando ingreso por ID: {e}")
+            return None
 
-    # ============ MÉTODOS DE CONSULTA AVANZADOS ============
-
-    def get_all(
-        self,
-        tipo_ingreso: Optional[str] = None,
-        matricula_id: Optional[int] = None,
-        fecha_desde: Optional[str] = None,
-        fecha_hasta: Optional[str] = None,
-        estado: Optional[str] = None,
-        registrado_por: Optional[int] = None,
-        limit: int = 100,
-        offset: int = 0,
-        order_by: str = "fecha",
-        order_desc: bool = True,
-    ) -> List[Dict[str, Any]]:
+    @classmethod
+    def find_all(cls, limit: int = 100) -> List["IngresoModel"]:
         """
         Obtiene todos los ingresos
 
         Args:
-            tipo_ingreso: Filtrar por tipo de ingreso
-            matricula_id: Filtrar por matrícula específica
-            fecha_desde: Fecha inicial (YYYY-MM-DD)
-            fecha_hasta: Fecha final (YYYY-MM-DD)
-            estado: Filtrar por estado
-            registrado_por: Filtrar por usuario que registró
-            limit: Límite de registros
-            offset: Desplazamiento para paginación
-            order_by: Campo para ordenar
-            order_desc: Si es True, orden descendente
+            limit: Límite de resultados
 
         Returns:
-            List[Dict]: Lista de ingresos
+            List[IngresoModel]: Lista de ingresos
         """
         try:
-            query = f"""
-            SELECT i.*,
-                   m.estudiante_id,
-                   e.nombres as estudiante_nombres,
-                   e.apellidos as estudiante_apellidos,
-                   p.nombre as programa_nombre,
-                   u.username as registrado_por_usuario,
-                   u.nombre_completo as registrado_por_nombre
-            FROM {self.table_name} i
-            LEFT JOIN matriculas m ON i.matricula_id = m.id
-            LEFT JOIN estudiantes e ON m.estudiante_id = e.id
-            LEFT JOIN programas_academicos p ON m.programa_id = p.id
-            LEFT JOIN usuarios u ON i.registrado_por = u.id
-            """
+            instance = cls()
+            query = "SELECT * FROM ingresos ORDER BY fecha DESC LIMIT %s"
+            results = instance.fetch_all(query, (limit,))
 
-            conditions: List[str] = []
-            params: List[Any] = []
-
-            if tipo_ingreso is not None:
-                conditions.append("i.tipo_ingreso = %s")
-                params.append(tipo_ingreso)
-
-            if matricula_id is not None:
-                conditions.append("i.matricula_id = %s")
-                params.append(matricula_id)
-
-            if fecha_desde is not None:
-                conditions.append("i.fecha >= %s")
-                params.append(fecha_desde)
-
-            if fecha_hasta is not None:
-                conditions.append("i.fecha <= %s")
-                params.append(fecha_hasta)
-
-            if estado is not None:
-                conditions.append("i.estado = %s")
-                params.append(estado)
-
-            if registrado_por is not None:
-                conditions.append("i.registrado_por = %s")
-                params.append(registrado_por)
-
-            if conditions:
-                query += " WHERE " + " AND ".join(conditions)
-
-            # Ordenar
-            order_dir = "DESC" if order_desc else "ASC"
-            query += f" ORDER BY i.{order_by} {order_dir}"
-
-            # Paginación
-            query += " LIMIT %s OFFSET %s"
-            params.extend([limit, offset])
-
-            return self.fetch_all(query, params)
+            return [cls(**row) for row in results] if results else []
 
         except Exception as e:
-            print(f"✗ Error obteniendo ingresos: {e}")
+            print(f"✗ Error obteniendo todos los ingresos: {e}")
             return []
 
-    def get_by_matricula(
-        self, matricula_id: int, estado: Optional[str] = None
-    ) -> List[Dict[str, Any]]:
+    @classmethod
+    def buscar_por_matricula(cls, matricula_id: int) -> List["IngresoModel"]:
         """
-        Obtiene ingresos por matrícula
-
-        Args:
-            matricula_id: ID de la matrícula
-            estado: Filtrar por estado
-
-        Returns:
-            List[Dict]: Lista de ingresos de la matrícula
-        """
-        return self.get_all(matricula_id=matricula_id, estado=estado)
-
-    def get_by_estudiante(
-        self,
-        estudiante_id: int,
-        fecha_desde: Optional[str] = None,
-        fecha_hasta: Optional[str] = None,
-    ) -> List[Dict[str, Any]]:
-        """
-        Obtiene ingresos por estudiante
-
-        Args:
-            estudiante_id: ID del estudiante
-            fecha_desde: Fecha inicial (YYYY-MM-DD)
-            fecha_hasta: Fecha final (YYYY-MM-DD)
-
-        Returns:
-            List[Dict]: Lista de ingresos del estudiante
-        """
-        try:
-            query = f"""
-            SELECT i.*,
-                   m.estudiante_id,
-                   e.nombres as estudiante_nombres,
-                   e.apellidos as estudiante_apellidos,
-                   p.nombre as programa_nombre
-            FROM {self.table_name} i
-            JOIN matriculas m ON i.matricula_id = m.id
-            JOIN estudiantes e ON m.estudiante_id = e.id
-            JOIN programas_academicos p ON m.programa_id = p.id
-            WHERE m.estudiante_id = %s
-            """
-
-            params = [estudiante_id]
-
-            if fecha_desde is not None:
-                query += " AND i.fecha >= %s"
-                params.append(fecha_desde)  # type: ignore
-
-            if fecha_hasta is not None:
-                query += " AND i.fecha <= %s"
-                params.append(fecha_hasta)  # type: ignore
-
-            query += " ORDER BY i.fecha DESC"
-
-            return self.fetch_all(query, params)
-
-        except Exception as e:
-            print(f"✗ Error obteniendo ingresos por estudiante: {e}")
-            return []
-
-    def get_by_fecha(
-        self, fecha: str, estado: Optional[str] = None
-    ) -> List[Dict[str, Any]]:
-        """
-        Obtiene ingresos por fecha específica
-
-        Args:
-            fecha: Fecha a consultar (YYYY-MM-DD)
-            estado: Filtrar por estado
-
-        Returns:
-            List[Dict]: Lista de ingresos de la fecha
-        """
-        return self.get_all(fecha_desde=fecha, fecha_hasta=fecha, estado=estado)
-
-    def search(
-        self,
-        search_term: str,
-        fecha_desde: Optional[str] = None,
-        fecha_hasta: Optional[str] = None,
-        estado: Optional[str] = None,
-    ) -> List[Dict[str, Any]]:
-        """
-        Busca ingresos por término de búsqueda
-
-        Args:
-            search_term: Término a buscar
-            fecha_desde: Fecha inicial (YYYY-MM-DD)
-            fecha_hasta: Fecha final (YYYY-MM-DD)
-            estado: Filtrar por estado
-
-        Returns:
-            List[Dict]: Lista de ingresos que coinciden
-        """
-        try:
-            query = f"""
-            SELECT i.*,
-                   m.estudiante_id,
-                   e.nombres as estudiante_nombres,
-                   e.apellidos as estudiante_apellidos,
-                   p.nombre as programa_nombre,
-                   u.username as registrado_por_usuario
-            FROM {self.table_name} i
-            LEFT JOIN matriculas m ON i.matricula_id = m.id
-            LEFT JOIN estudiantes e ON m.estudiante_id = e.id
-            LEFT JOIN programas_academicos p ON m.programa_id = p.id
-            LEFT JOIN usuarios u ON i.registrado_por = u.id
-            WHERE (i.concepto ILIKE %s 
-                   OR i.nro_comprobante ILIKE %s 
-                   OR i.nro_transaccion ILIKE %s
-                   OR e.nombres ILIKE %s 
-                   OR e.apellidos ILIKE %s)
-            """
-
-            params = [
-                f"%{search_term}%",
-                f"%{search_term}%",
-                f"%{search_term}%",
-                f"%{search_term}%",
-                f"%{search_term}%",
-            ]
-
-            if fecha_desde is not None:
-                query += " AND i.fecha >= %s"
-                params.append(fecha_desde)
-
-            if fecha_hasta is not None:
-                query += " AND i.fecha <= %s"
-                params.append(fecha_hasta)
-
-            if estado is not None:
-                query += " AND i.estado = %s"
-                params.append(estado)
-
-            query += " ORDER BY i.fecha DESC"
-
-            return self.fetch_all(query, params)
-
-        except Exception as e:
-            print(f"✗ Error buscando ingresos: {e}")
-            return []
-
-    # ============ MÉTODOS DE CÁLCULO Y REPORTES ============
-
-    def get_total_pagado_matricula(self, matricula_id: int) -> Decimal:
-        """
-        Calcula el total pagado por una matrícula
+        Busca ingresos por matrícula
 
         Args:
             matricula_id: ID de la matrícula
 
         Returns:
-            Decimal: Total pagado
+            List[IngresoModel]: Lista de ingresos de la matrícula
         """
         try:
-            query = f"""
-            SELECT COALESCE(SUM(monto), 0) as total_pagado
-            FROM {self.table_name}
-            WHERE matricula_id = %s 
-              AND estado IN ('REGISTRADO', 'CONFIRMADO', 'CONTABILIZADO')
+            instance = cls()
+            query = """
+                SELECT * FROM ingresos 
+                WHERE matricula_id = %s 
+                ORDER BY fecha DESC
             """
+            results = instance.fetch_all(query, (matricula_id,))
 
-            result = self.fetch_one(query, (matricula_id,))
-            return Decimal(str(result["total_pagado"])) if result else Decimal("0")
+            return [cls(**row) for row in results] if results else []
 
         except Exception as e:
-            print(f"✗ Error calculando total pagado: {e}")
-            return Decimal("0")
+            print(f"✗ Error buscando ingresos por matrícula: {e}")
+            return []
 
-    def get_ingresos_por_periodo(
-        self, fecha_desde: str, fecha_hasta: str
-    ) -> Dict[str, Any]:
+    @classmethod
+    def crear_ingreso_generico(cls, datos: Dict[str, Any]) -> "IngresoModel":
         """
-        Obtiene estadísticas de ingresos por período
+        Crea un ingreso genérico
 
         Args:
-            fecha_desde: Fecha inicial (YYYY-MM-DD)
-            fecha_hasta: Fecha final (YYYY-MM-DD)
+            datos: Diccionario con datos del ingreso
 
         Returns:
-            Dict: Estadísticas del período
+            IngresoModel: Instancia del ingreso creado
+        """
+        # Asegurar que sea ingreso genérico
+        datos["tipo_ingreso"] = cls.TIPO_OTRO_INGRESO
+        datos["matricula_id"] = None
+        datos["nro_cuota"] = None
+
+        # Crear instancia
+        ingreso = cls(**datos)
+
+        # Guardar en base de datos
+        ingreso.save()
+
+        return ingreso
+
+    @classmethod
+    def buscar_ingresos_genericos(
+        cls, fecha_inicio: Optional[str] = None, fecha_fin: Optional[str] = None
+    ) -> List["IngresoModel"]:
+        """
+        Busca ingresos genéricos
+
+        Args:
+            fecha_inicio: Fecha de inicio (opcional)
+            fecha_fin: Fecha de fin (opcional)
+
+        Returns:
+            List[IngresoModel]: Lista de ingresos genéricos
         """
         try:
-            query = f"""
-            SELECT 
-                tipo_ingreso,
-                COUNT(*) as cantidad,
-                SUM(monto) as total_monto,
-                AVG(monto) as promedio_monto
-            FROM {self.table_name}
-            WHERE fecha BETWEEN %s AND %s 
-              AND estado IN ('REGISTRADO', 'CONFIRMADO', 'CONTABILIZADO')
-            GROUP BY tipo_ingreso
-            ORDER BY total_monto DESC
+            instance = cls()
+
+            query = """
+                SELECT * FROM ingresos 
+                WHERE tipo_ingreso = %s
             """
+            params = [cls.TIPO_OTRO_INGRESO]
 
-            resultados = self.fetch_all(query, (fecha_desde, fecha_hasta))
+            if fecha_inicio:
+                query += " AND fecha >= %s"
+                params.append(fecha_inicio)
 
-            # Calcular totales
-            total_general = Decimal("0")
-            cantidad_total = 0
+            if fecha_fin:
+                query += " AND fecha <= %s"
+                params.append(fecha_fin)
 
-            for row in resultados:
-                total_general += Decimal(str(row["total_monto"]))
-                cantidad_total += row["cantidad"]
+            query += " ORDER BY fecha DESC"
 
-            return {
-                "fecha_desde": fecha_desde,
-                "fecha_hasta": fecha_hasta,
-                "total_general": float(total_general),
-                "cantidad_total": cantidad_total,
-                "promedio_general": (
-                    float(total_general / Decimal(str(cantidad_total)))
-                    if cantidad_total > 0
-                    else 0
-                ),
-                "detalle_por_tipo": resultados,
-            }
+            results = instance.fetch_all(query, params)
+
+            return [cls(**row) for row in results] if results else []
 
         except Exception as e:
-            print(f"✗ Error obteniendo ingresos por período: {e}")
-            return {
-                "fecha_desde": fecha_desde,
-                "fecha_hasta": fecha_hasta,
-                "total_general": 0.0,
-                "cantidad_total": 0,
-                "promedio_general": 0.0,
-                "detalle_por_tipo": [],
-            }
+            print(f"✗ Error buscando ingresos genéricos: {e}")
+            return []
 
-    def get_ingresos_por_mes(
-        self, año: int, mes: Optional[int] = None
-    ) -> List[Dict[str, Any]]:
+    @classmethod
+    def buscar_por_rango_fechas(
+        cls, fecha_inicio: str, fecha_fin: str, estado: Optional[str] = None
+    ) -> List["IngresoModel"]:
         """
-        Obtiene ingresos por mes
+        Busca ingresos por rango de fechas
+
+        Args:
+            fecha_inicio: Fecha de inicio
+            fecha_fin: Fecha de fin
+            estado: Estado a filtrar (opcional)
+
+        Returns:
+            List[IngresoModel]: Lista de ingresos en el rango
+        """
+        try:
+            instance = cls()
+
+            query = "SELECT * FROM ingresos WHERE fecha BETWEEN %s AND %s"
+            params = [fecha_inicio, fecha_fin]
+
+            if estado:
+                query += " AND estado = %s"
+                params.append(estado)
+
+            query += " ORDER BY fecha DESC"
+
+            results = instance.fetch_all(query, params)
+
+            return [cls(**row) for row in results] if results else []
+
+        except Exception as e:
+            print(f"✗ Error buscando ingresos por rango de fechas: {e}")
+            return []
+
+    @classmethod
+    def get_estadisticas_mes(cls, año: int, mes: int) -> Dict[str, Any]:
+        """
+        Obtiene estadísticas de ingresos por mes
 
         Args:
             año: Año a consultar
-            mes: Mes específico (opcional)
+            mes: Mes a consultar (1-12)
 
         Returns:
-            List[Dict]: Ingresos por mes
+            Dict[str, Any]: Estadísticas del mes
         """
         try:
-            if mes:
-                fecha_desde = f"{año:04d}-{mes:02d}-01"
-                if mes == 12:
-                    fecha_hasta = f"{año:04d}-12-31"
-                else:
-                    fecha_hasta = f"{año:04d}-{(mes+1):02d}-01"
+            instance = cls()
 
-                query = f"""
-                SELECT 
-                    EXTRACT(DAY FROM fecha) as dia,
-                    COUNT(*) as cantidad,
-                    SUM(monto) as total
-                FROM {self.table_name}
-                WHERE fecha BETWEEN %s AND %s 
-                  AND estado IN ('REGISTRADO', 'CONFIRMADO', 'CONTABILIZADO')
-                GROUP BY EXTRACT(DAY FROM fecha)
-                ORDER BY dia
-                """
-
-                params: List[Any] = [fecha_desde, fecha_hasta]
-                return self.fetch_all(query, params)
+            fecha_inicio = f"{año:04d}-{mes:02d}-01"
+            if mes == 12:
+                fecha_fin = f"{año:04d}-12-31"
             else:
-                query = f"""
+                fecha_fin = f"{año:04d}-{(mes+1):02d}-01"
+
+            query = """
                 SELECT 
-                    EXTRACT(MONTH FROM fecha) as mes,
+                    tipo_ingreso,
                     COUNT(*) as cantidad,
-                    SUM(monto) as total
-                FROM {self.table_name}
-                    WHERE EXTRACT(YEAR FROM fecha) = %s 
-                  AND estado IN ('REGISTRADO', 'CONFIRMADO', 'CONTABILIZADO')
-                GROUP BY EXTRACT(MONTH FROM fecha)
-                ORDER BY mes
-                """
-
-                return self.fetch_all(query, (año,))
-
-        except Exception as e:
-            print(f"✗ Error obteniendo ingresos por mes: {e}")
-            return []
-
-    # ============ MÉTODOS PARA DASHBOARD ============
-
-    def get_total_ingresos(
-        self,
-        fecha_desde: Optional[str] = None,
-        fecha_hasta: Optional[str] = None,
-        estado: Optional[str] = None,
-    ) -> Decimal:
-        """
-        Obtiene el total de ingresos
-
-        Args:
-            fecha_desde: Fecha inicial (YYYY-MM-DD)
-            fecha_hasta: Fecha final (YYYY-MM-DD)
-            estado: Filtrar por estado
-
-        Returns:
-            Decimal: Total de ingresos
-        """
-        try:
-            query = f"SELECT COALESCE(SUM(monto), 0) as total FROM {self.table_name}"
-            conditions = []
-            params = []
-
-            if fecha_desde is not None:
-                conditions.append("fecha >= %s")
-                params.append(fecha_desde)
-
-            if fecha_hasta is not None:
-                conditions.append("fecha <= %s")
-                params.append(fecha_hasta)
-
-            if estado is not None:
-                conditions.append("estado = %s")
-                params.append(estado)
-            else:
-                # Por defecto, solo contar ingresos válidos
-                conditions.append(
-                    "estado IN ('REGISTRADO', 'CONFIRMADO', 'CONTABILIZADO')"
-                )
-
-            if conditions:
-                query += " WHERE " + " AND ".join(conditions)
-
-            result = self.fetch_one(query, params)
-            return Decimal(str(result["total"])) if result else Decimal("0")
-
-        except Exception as e:
-            print(f"✗ Error obteniendo total de ingresos: {e}")
-            return Decimal("0")
-
-    def get_ingresos_por_tipo(
-        self, fecha_desde: Optional[str] = None, fecha_hasta: Optional[str] = None
-    ) -> List[Dict[str, Any]]:
-        """
-        Obtiene distribución de ingresos por tipo
-
-        Args:
-            fecha_desde: Fecha inicial (YYYY-MM-DD)
-            fecha_hasta: Fecha final (YYYY-MM-DD)
-
-        Returns:
-            List[Dict]: Distribución por tipo
-        """
-        try:
-            query = f"""
-            SELECT 
-                tipo_ingreso,
-                COUNT(*) as cantidad,
-                SUM(monto) as total_monto
-            FROM {self.table_name}
-            WHERE estado IN ('REGISTRADO', 'CONFIRMADO', 'CONTABILIZADO')
+                    SUM(monto) as total_monto,
+                    forma_pago,
+                    COUNT(CASE WHEN estado = %s THEN 1 END) as confirmados,
+                    COUNT(CASE WHEN estado = %s THEN 1 END) as anulados
+                FROM ingresos 
+                WHERE fecha BETWEEN %s AND %s
+                GROUP BY tipo_ingreso, forma_pago
+                ORDER BY total_monto DESC
             """
 
-            conditions = []
-            params = []
+            params = [
+                cls.ESTADO_CONFIRMADO,
+                cls.ESTADO_ANULADO,
+                fecha_inicio,
+                fecha_fin,
+            ]
 
-            if fecha_desde is not None:
-                conditions.append("fecha >= %s")
-                params.append(fecha_desde)
+            results = instance.fetch_all(query, params)
 
-            if fecha_hasta is not None:
-                conditions.append("fecha <= %s")
-                params.append(fecha_hasta)
+            # Calcular totales
+            total_general = 0
+            for row in results:
+                total_general += row["total_monto"] or 0
 
-            if conditions:
-                query += " AND " + " AND ".join(conditions)
-
-            query += " GROUP BY tipo_ingreso ORDER BY total_monto DESC"
-
-            return self.fetch_all(query, params)
-
-        except Exception as e:
-            print(f"✗ Error obteniendo ingresos por tipo: {e}")
-            return []
-
-    # ============ MÉTODOS DE AUDITORÍA ============
-
-    def _registrar_auditoria(
-        self, accion: str, ingreso_id: int, usuario_id: Optional[int] = None
-    ):
-        """
-        Registra acción de auditoría para el ingreso
-
-        Args:
-            accion: Acción realizada (CREACION, ACTUALIZACION, ELIMINACION)
-            ingreso_id: ID del ingreso
-            usuario_id: ID del usuario que realizó la acción
-        """
-        try:
-            # En una implementación real, esto se registraría en una tabla de auditoría
-            timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            usuario_info = f" (Usuario: {usuario_id})" if usuario_id else ""
-
-            print(
-                f"📋 Auditoría - {timestamp} - {accion} ingreso {ingreso_id}{usuario_info}"
-            )
+            return {
+                "año": año,
+                "mes": mes,
+                "fecha_inicio": fecha_inicio,
+                "fecha_fin": fecha_fin,
+                "total_general": total_general,
+                "detalle": results if results else [],
+                "total_registros": len(results) if results else 0,
+            }
 
         except Exception as e:
-            print(f"✗ Error registrando auditoría: {e}")
+            print(f"✗ Error obteniendo estadísticas del mes: {e}")
+            return {}
 
-    # ============ MÉTODOS DE VALIDACIÓN DE UNICIDAD ============
+    # ============ MÉTODOS DE VALIDACIÓN ============
 
-    def comprobante_exists(
-        self, nro_comprobante: str, exclude_id: Optional[int] = None
-    ) -> bool:
+    @classmethod
+    def validar_forma_pago(cls, forma_pago: str) -> bool:
         """
-        Verifica si un número de comprobante ya existe
+        Valida si una forma de pago es válida
 
         Args:
-            nro_comprobante: Número de comprobante a verificar
-            exclude_id: ID a excluir (para actualizaciones)
+            forma_pago: Forma de pago a validar
 
         Returns:
-            bool: True si existe, False en caso contrario
+            bool: True si es válida
         """
-        try:
-            query = f"SELECT COUNT(*) as count FROM {self.table_name} WHERE nro_comprobante = %s"
-            params: List[Any] = [nro_comprobante]
+        formas_validas = [
+            cls.FORMA_EFECTIVO,
+            cls.FORMA_TRANSFERENCIA,
+            cls.FORMA_TARJETA_CREDITO,
+            cls.FORMA_TARJETA_DEBITO,
+            cls.FORMA_DEPOSITO,
+            cls.FORMA_CHEQUE,
+        ]
 
-            if exclude_id is not None:
-                query += " AND id != %s"
-                params.append(exclude_id)
+        return forma_pago in formas_validas
 
-            result = self.fetch_one(query, params)
-            return result["count"] > 0 if result else False
-
-        except Exception as e:
-            print(f"✗ Error verificando número de comprobante: {e}")
-            return False
-
-    def matricula_tipo_exists(
-        self, matricula_id: int, tipo_ingreso: str, exclude_id: Optional[int] = None
-    ) -> bool:
+    @classmethod
+    def validar_tipo_ingreso(cls, tipo_ingreso: str) -> bool:
         """
-        Verifica si ya existe un ingreso del mismo tipo para la matrícula
+        Valida si un tipo de ingreso es válido
 
         Args:
-            matricula_id: ID de la matrícula
-            tipo_ingreso: Tipo de ingreso
-            exclude_id: ID a excluir (para actualizaciones)
+            tipo_ingreso: Tipo de ingreso a validar
 
         Returns:
-            bool: True si existe, False en caso contrario
+            bool: True si es válido
         """
-        try:
-            query = f"SELECT COUNT(*) as count FROM {self.table_name} WHERE matricula_id = %s AND tipo_ingreso = %s"
-            params: List[Any] = [matricula_id, tipo_ingreso]
+        tipos_validos = [
+            cls.TIPO_MATRICULA_CUOTA,
+            cls.TIPO_MATRICULA_CONTADO,
+            cls.TIPO_OTRO_INGRESO,
+        ]
 
-            if exclude_id is not None:
-                query += " AND id != %s"
-                params.append(exclude_id)
+        return tipo_ingreso in tipos_validos
 
-            result = self.fetch_one(query, params)
-            return result["count"] > 0 if result else False
+    @classmethod
+    def validar_estado(cls, estado: str) -> bool:
+        """
+        Valida si un estado es válido
 
-        except Exception as e:
-            print(f"✗ Error verificando matrícula-tipo: {e}")
-            return False
+        Args:
+            estado: Estado a validar
 
-    # ============ MÉTODOS DE COMPATIBILIDAD ============
+        Returns:
+            bool: True si es válido
+        """
+        estados_validos = [
+            cls.ESTADO_REGISTRADO,
+            cls.ESTADO_CONFIRMADO,
+            cls.ESTADO_ANULADO,
+        ]
 
-    def obtener_todos(self):
-        """Método de compatibilidad con nombres antiguos"""
-        return self.get_all()
-
-    def obtener_por_id(self, ingreso_id):
-        """Método de compatibilidad con nombres antiguos"""
-        return self.read(ingreso_id)
-
-    def obtener_por_matricula(self, matricula_id):
-        """Método de compatibilidad con nombres antiguos"""
-        return self.get_by_matricula(matricula_id)
-
-    def buscar_ingresos(self, termino):
-        """Método de compatibilidad con nombres antiguos"""
-        return self.search(termino)
-
-    def update_table(self, table, data, condition, params=None):
-        """Método helper para actualizar (compatibilidad con BaseModel)"""
-        return self.update(table, data, condition, params)  # type: ignore
+        return estado in estados_validos
 
     # ============ MÉTODOS DE UTILIDAD ============
 
-    def get_tipos_ingreso(self) -> List[str]:
+    @classmethod
+    def get_tipos_ingreso(cls) -> List[Dict[str, str]]:
         """
-        Obtiene la lista de tipos de ingreso
+        Obtiene la lista de tipos de ingreso con descripción
 
         Returns:
-            List[str]: Lista de tipos
+            List[Dict[str, str]]: Lista de tipos con descripción
         """
-        return self.TIPOS_INGRESO.copy()
+        return [
+            {"valor": cls.TIPO_MATRICULA_CUOTA, "descripcion": "Matrícula por cuotas"},
+            {
+                "valor": cls.TIPO_MATRICULA_CONTADO,
+                "descripcion": "Matrícula al contado",
+            },
+            {"valor": cls.TIPO_OTRO_INGRESO, "descripcion": "Otro ingreso"},
+        ]
 
-    def get_formas_pago(self) -> List[str]:
+    @classmethod
+    def get_formas_pago(cls) -> List[Dict[str, str]]:
         """
-        Obtiene la lista de formas de pago
+        Obtiene la lista de formas de pago con descripción
 
         Returns:
-            List[str]: Lista de formas de pago
+            List[Dict[str, str]]: Lista de formas de pago con descripción
         """
-        return self.FORMAS_PAGO.copy()
+        return [
+            {"valor": cls.FORMA_EFECTIVO, "descripcion": "Efectivo"},
+            {"valor": cls.FORMA_TRANSFERENCIA, "descripcion": "Transferencia bancaria"},
+            {"valor": cls.FORMA_TARJETA_CREDITO, "descripcion": "Tarjeta de crédito"},
+            {"valor": cls.FORMA_TARJETA_DEBITO, "descripcion": "Tarjeta de débito"},
+            {"valor": cls.FORMA_DEPOSITO, "descripcion": "Depósito bancario"},
+            {"valor": cls.FORMA_CHEQUE, "descripcion": "Cheque"},
+        ]
 
-    def get_estados_transaccion(self) -> List[str]:
+    @classmethod
+    def get_estados(cls) -> List[Dict[str, str]]:
         """
-        Obtiene la lista de estados de transacción
+        Obtiene la lista de estados con descripción
 
         Returns:
-            List[str]: Lista de estados
+            List[Dict[str, str]]: Lista de estados con descripción
         """
-        return self.ESTADOS_TRANSACCION.copy()
+        return [
+            {"valor": cls.ESTADO_REGISTRADO, "descripcion": "Registrado"},
+            {"valor": cls.ESTADO_CONFIRMADO, "descripcion": "Confirmado"},
+            {"valor": cls.ESTADO_ANULADO, "descripcion": "Anulado"},
+        ]
+
+    def __str__(self) -> str:
+        """Representación en string del ingreso"""
+        return (
+            f"Ingreso #{self.id}: {self.concepto} - ${self.monto:.2f} ({self.estado})"
+        )
+
+    def __repr__(self) -> str:
+        """Representación oficial del objeto"""
+        return f"IngresoModel(id={self.id}, tipo={self.tipo_ingreso}, monto={self.monto}, estado={self.estado})"
+
+
+# Métodos adicionales para compatibilidad con controladores antiguos
+def crear_ingreso_generico(datos: Dict[str, Any]) -> IngresoModel:
+    """Función helper para compatibilidad"""
+    return IngresoModel.crear_ingreso_generico(datos)
+
+
+def buscar_por_matricula(matricula_id: int) -> List[IngresoModel]:
+    """Función helper para compatibilidad"""
+    return IngresoModel.buscar_por_matricula(matricula_id)
+
+
+def buscar_ingresos_genericos(
+    fecha_inicio: str = None, fecha_fin: str = None  # type:ignore
+) -> List[IngresoModel]:
+    """Función helper para compatibilidad"""
+    return IngresoModel.buscar_ingresos_genericos(fecha_inicio, fecha_fin)

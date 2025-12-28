@@ -8,12 +8,14 @@ from datetime import datetime
 from typing import Dict, List, Optional, Tuple, Any, Union
 from pathlib import Path
 
-from app.models.usuarios_model import UsuarioModel
+from app.models.usuarios_model import UsuariosModel
 
 logger = logging.getLogger(__name__)
 
+
 class UsuariosController:
     """Controlador para la gestión de usuarios del sistema"""
+
     def __init__(self, db_path: str = None):
         """
         Inicializar controlador de usuarios
@@ -27,12 +29,12 @@ class UsuariosController:
     # ==================== PROPIEDADES ====================
 
     @property
-    def current_user(self) -> Optional[UsuarioModel]:
+    def current_user(self) -> Optional[UsuariosModel]:
         """Obtener usuario actualmente autenticado"""
         return self._current_user
 
     @current_user.setter
-    def current_user(self, user: UsuarioModel):
+    def current_user(self, user: UsuariosModel):
         """Establecer usuario actual"""
         self._current_user = user
 
@@ -72,7 +74,9 @@ class UsuariosController:
 
     # ==================== AUTENTICACIÓN ====================
 
-    def login(self, username: str, password: str) -> Tuple[bool, str, Optional[UsuarioModel]]:
+    def login(
+        self, username: str, password: str
+    ) -> Tuple[bool, str, Optional[UsuariosModel]]:
         """
         Autenticar usuario
 
@@ -89,7 +93,7 @@ class UsuariosController:
                 return False, "Nombre de usuario y contraseña son requeridos", None
 
             # Autenticar
-            usuario = UsuarioModel.authenticate(username, password)
+            usuario = UsuariosModel.authenticate(username, password)
 
             if not usuario:
                 return False, "Nombre de usuario o contraseña incorrectos", None
@@ -130,7 +134,9 @@ class UsuariosController:
             logger.error(f"Error en logout: {e}")
             return False, f"Error interno: {str(e)}"
 
-    def change_password(self, current_password: str, new_password: str) -> Tuple[bool, str]:
+    def change_password(
+        self, current_password: str, new_password: str
+    ) -> Tuple[bool, str]:
         """
         Cambiar contraseña del usuario actual
 
@@ -150,7 +156,7 @@ class UsuariosController:
                 return False, "Contraseña actual incorrecta"
 
             # Validar nueva contraseña
-            valido, mensaje = UsuarioModel.validate_password(new_password)
+            valido, mensaje = UsuariosModel.validate_password(new_password)
             if not valido:
                 return False, mensaje
 
@@ -168,7 +174,9 @@ class UsuariosController:
 
     # ==================== OPERACIONES CRUD ====================
 
-    def crear_usuario(self, datos: Dict[str, Any]) -> Tuple[bool, str, Optional[UsuarioModel]]:
+    def crear_usuario(
+        self, datos: Dict[str, Any]
+    ) -> Tuple[bool, str, Optional[UsuariosModel]]:
         """
         Crear un nuevo usuario
 
@@ -180,7 +188,7 @@ class UsuariosController:
         """
         try:
             # Verificar permisos
-            if not self.has_permission(UsuarioModel.ROL_ADMINISTRADOR):
+            if not self.has_permission(UsuariosModel.ROL_ADMINISTRADOR):
                 return False, "Solo administradores pueden crear usuarios", None
 
             # Validar datos requeridos
@@ -189,33 +197,37 @@ class UsuariosController:
                 return False, "Errores de validación: " + "; ".join(errores), None
 
             # Verificar unicidad de username
-            username = datos['username']
-            existente = UsuarioModel.get_by_username(username)
+            username = datos["username"]
+            existente = UsuariosModel.get_by_username(username)
             if existente:
                 return False, f"Ya existe un usuario con el nombre '{username}'", None
 
             # Verificar unicidad de email si se proporciona
-            if 'email' in datos and datos['email']:
-                existente_email = UsuarioModel.get_by_email(datos['email'])
+            if "email" in datos and datos["email"]:
+                existente_email = UsuariosModel.get_by_email(datos["email"])
                 if existente_email:
-                    return False, f"Ya existe un usuario con el email '{datos['email']}'", None
+                    return (
+                        False,
+                        f"Ya existe un usuario con el email '{datos['email']}'",
+                        None,
+                    )
 
             # Crear el usuario
-            usuario = UsuarioModel(**datos)
+            usuario = UsuariosModel(**datos)
 
             # Hashear contraseña si se proporciona
-            if 'password' in datos:
-                usuario.set_password(datos['password'])
+            if "password" in datos:
+                usuario.set_password(datos["password"])
             else:
                 # Generar contraseña aleatoria
-                password_generated = UsuarioModel.generate_random_password()
+                password_generated = UsuariosModel.generate_random_password()
                 usuario.set_password(password_generated)
-                datos['password'] = password_generated
+                datos["password"] = password_generated
 
             usuario_id = usuario.save()
 
             if usuario_id:
-                usuario_creado = UsuarioModel.get_by_id(usuario_id)
+                usuario_creado = UsuariosModel.get_by_id(usuario_id)
                 mensaje = f"Usuario '{username}' creado exitosamente"
                 return True, mensaje, usuario_creado
             else:
@@ -225,7 +237,9 @@ class UsuariosController:
             logger.error(f"Error al crear usuario: {e}")
             return False, f"Error interno: {str(e)}", None
 
-    def actualizar_usuario(self, usuario_id: int, datos: Dict[str, Any]) -> Tuple[bool, str, Optional[UsuarioModel]]:
+    def actualizar_usuario(
+        self, usuario_id: int, datos: Dict[str, Any]
+    ) -> Tuple[bool, str, Optional[UsuariosModel]]:
         """
         Actualizar un usuario existente
 
@@ -238,11 +252,11 @@ class UsuariosController:
         """
         try:
             # Verificar permisos
-            if not self.has_permission(UsuarioModel.ROL_ADMINISTRADOR):
+            if not self.has_permission(UsuariosModel.ROL_ADMINISTRADOR):
                 return False, "Solo administradores pueden actualizar usuarios", None
 
             # Buscar usuario existente
-            usuario = UsuarioModel.get_by_id(usuario_id)
+            usuario = UsuariosModel.get_by_id(usuario_id)
             if not usuario:
                 return False, f"No se encontró usuario con ID {usuario_id}", None
 
@@ -252,25 +266,33 @@ class UsuariosController:
                 return False, "Errores de validación: " + "; ".join(errores), None
 
             # Verificar unicidad de username si se está actualizando
-            if 'username' in datos and datos['username'] != usuario.username:
-                existente = UsuarioModel.get_by_username(datos['username'])
+            if "username" in datos and datos["username"] != usuario.username:
+                existente = UsuariosModel.get_by_username(datos["username"])
                 if existente and existente.id != usuario_id:
-                    return False, f"Ya existe otro usuario con el nombre '{datos['username']}'", None
+                    return (
+                        False,
+                        f"Ya existe otro usuario con el nombre '{datos['username']}'",
+                        None,
+                    )
 
             # Verificar unicidad de email si se está actualizando
-            if 'email' in datos and datos['email'] != usuario.email:
-                existente_email = UsuarioModel.get_by_email(datos['email'])
+            if "email" in datos and datos["email"] != usuario.email:
+                existente_email = UsuariosModel.get_by_email(datos["email"])
                 if existente_email and existente_email.id != usuario_id:
-                    return False, f"Ya existe otro usuario con el email '{datos['email']}'", None
+                    return (
+                        False,
+                        f"Ya existe otro usuario con el email '{datos['email']}'",
+                        None,
+                    )
 
             # Actualizar atributos del usuario
             for key, value in datos.items():
-                if hasattr(usuario, key) and key not in ['password', 'password_hash']:
+                if hasattr(usuario, key) and key not in ["password", "password_hash"]:
                     setattr(usuario, key, value)
 
             # Actualizar contraseña si se proporciona
-            if 'password' in datos and datos['password']:
-                usuario.set_password(datos['password'])
+            if "password" in datos and datos["password"]:
+                usuario.set_password(datos["password"])
 
             # Guardar cambios
             if usuario.save():
@@ -295,10 +317,10 @@ class UsuariosController:
         """
         try:
             # Verificar permisos
-            if not self.has_permission(UsuarioModel.ROL_ADMINISTRADOR):
+            if not self.has_permission(UsuariosModel.ROL_ADMINISTRADOR):
                 return False, "Solo administradores pueden eliminar usuarios"
 
-            usuario = UsuarioModel.get_by_id(usuario_id)
+            usuario = UsuariosModel.get_by_id(usuario_id)
             if not usuario:
                 return False, f"No se encontró usuario con ID {usuario_id}"
 
@@ -329,10 +351,10 @@ class UsuariosController:
         """
         try:
             # Verificar permisos
-            if not self.has_permission(UsuarioModel.ROL_ADMINISTRADOR):
+            if not self.has_permission(UsuariosModel.ROL_ADMINISTRADOR):
                 return False, "Solo administradores pueden reactivar usuarios"
 
-            usuario = UsuarioModel.get_by_id(usuario_id)
+            usuario = UsuariosModel.get_by_id(usuario_id)
             if not usuario:
                 return False, f"No se encontró usuario con ID {usuario_id}"
 
@@ -349,7 +371,7 @@ class UsuariosController:
 
     # ==================== CONSULTAS ====================
 
-    def obtener_usuario(self, usuario_id: int) -> Optional[UsuarioModel]:
+    def obtener_usuario(self, usuario_id: int) -> Optional[UsuariosModel]:
         """
         Obtener un usuario por su ID
 
@@ -357,15 +379,15 @@ class UsuariosController:
             usuario_id: ID del usuario
 
         Returns:
-            UsuarioModel o None si no se encuentra
+            UsuariosModel o None si no se encuentra
         """
         try:
-            return UsuarioModel.get_by_id(usuario_id)
+            return UsuariosModel.get_by_id(usuario_id)
         except Exception as e:
             logger.error(f"Error al obtener usuario {usuario_id}: {e}")
             return None
 
-    def obtener_usuario_por_username(self, username: str) -> Optional[UsuarioModel]:
+    def obtener_usuario_por_username(self, username: str) -> Optional[UsuariosModel]:
         """
         Obtener usuario por nombre de usuario
 
@@ -373,24 +395,24 @@ class UsuariosController:
             username: Nombre de usuario
 
         Returns:
-            UsuarioModel o None si no se encuentra
+            UsuariosModel o None si no se encuentra
         """
         try:
-            return UsuarioModel.get_by_username(username)
+            return UsuariosModel.get_by_username(username)
         except Exception as e:
             logger.error(f"Error al obtener usuario por username '{username}': {e}")
             return None
 
     def obtener_usuarios(
-        self, 
+        self,
         activos: bool = True,
         rol: Optional[str] = None,
         buscar: Optional[str] = None,
         limite: int = 100,
         offset: int = 0,
-        orden_por: str = 'nombre_completo',
-        orden_asc: bool = True
-    ) -> List[UsuarioModel]:
+        orden_por: str = "nombre_completo",
+        orden_asc: bool = True,
+    ) -> List[UsuariosModel]:
         """
         Obtener lista de usuarios con filtros
 
@@ -420,7 +442,9 @@ class UsuariosController:
                 parametros.append(rol)
 
             if buscar:
-                condiciones.append("(username LIKE ? OR nombre_completo LIKE ? OR email LIKE ?)")
+                condiciones.append(
+                    "(username LIKE ? OR nombre_completo LIKE ? OR email LIKE ?)"
+                )
                 parametros.extend([f"%{buscar}%", f"%{buscar}%", f"%{buscar}%"])
 
             # Convertir condiciones a string
@@ -429,9 +453,15 @@ class UsuariosController:
                 where_clause = "WHERE " + " AND ".join(condiciones)
 
             # Validar campo de orden
-            campos_validos = ['nombre_completo', 'username', 'rol', 'created_at', 'last_login']
+            campos_validos = [
+                "nombre_completo",
+                "username",
+                "rol",
+                "created_at",
+                "last_login",
+            ]
             if orden_por not in campos_validos:
-                orden_por = 'nombre_completo'
+                orden_por = "nombre_completo"
 
             # Construir orden
             orden = f"{orden_por} {'ASC' if orden_asc else 'DESC'}"
@@ -449,8 +479,14 @@ class UsuariosController:
                 {limit_clause}
             """
 
-            usuarios = UsuarioModel.query(query, parametros) if parametros else UsuarioModel.query(query)
-            return [UsuarioModel(**usuario) for usuario in usuarios] if usuarios else []
+            usuarios = (
+                UsuariosModel.query(query, parametros)
+                if parametros
+                else UsuariosModel.query(query)
+            )
+            return (
+                [UsuariosModel(**usuario) for usuario in usuarios] if usuarios else []
+            )
 
         except Exception as e:
             logger.error(f"Error al obtener usuarios: {e}")
@@ -469,8 +505,8 @@ class UsuariosController:
         try:
             where_clause = "WHERE activo = 1" if activos else ""
             query = f"SELECT COUNT(*) as count FROM usuarios {where_clause}"
-            resultado = UsuarioModel.query(query)
-            return resultado[0]['count'] if resultado else 0
+            resultado = UsuariosModel.query(query)
+            return resultado[0]["count"] if resultado else 0
         except Exception as e:
             logger.error(f"Error al contar usuarios: {e}")
             return 0
@@ -494,14 +530,14 @@ class UsuariosController:
                 GROUP BY rol
                 ORDER BY count DESC
             """
-            resultados = UsuarioModel.query(query)
+            resultados = UsuariosModel.query(query)
 
             conteo = {}
             for row in resultados:
-                conteo[row['rol']] = row['count']
+                conteo[row["rol"]] = row["count"]
 
             # Asegurar que todos los roles estén en el diccionario
-            for rol in UsuarioModel.ROLES:
+            for rol in UsuariosModel.ROLES:
                 if rol not in conteo:
                     conteo[rol] = 0
 
@@ -509,7 +545,7 @@ class UsuariosController:
 
         except Exception as e:
             logger.error(f"Error al contar usuarios por rol: {e}")
-            return {rol: 0 for rol in UsuarioModel.ROLES}
+            return {rol: 0 for rol in UsuariosModel.ROLES}
 
     # ==================== OPERACIONES ESPECÍFICAS ====================
 
@@ -526,10 +562,10 @@ class UsuariosController:
         """
         try:
             # Verificar permisos
-            if not self.has_permission(UsuarioModel.ROL_ADMINISTRADOR):
+            if not self.has_permission(UsuariosModel.ROL_ADMINISTRADOR):
                 return False, "Solo administradores pueden cambiar roles de usuarios"
 
-            usuario = UsuarioModel.get_by_id(usuario_id)
+            usuario = UsuariosModel.get_by_id(usuario_id)
             if not usuario:
                 return False, f"No se encontró usuario con ID {usuario_id}"
 
@@ -552,10 +588,10 @@ class UsuariosController:
         """
         try:
             # Verificar permisos
-            if not self.has_permission(UsuarioModel.ROL_ADMINISTRADOR):
+            if not self.has_permission(UsuariosModel.ROL_ADMINISTRADOR):
                 return False, "Solo administradores pueden activar/desactivar usuarios"
 
-            usuario = UsuarioModel.get_by_id(usuario_id)
+            usuario = UsuariosModel.get_by_id(usuario_id)
             if not usuario:
                 return False, f"No se encontró usuario con ID {usuario_id}"
 
@@ -566,7 +602,9 @@ class UsuariosController:
             logger.error(f"Error al activar/desactivar usuario {usuario_id}: {e}")
             return False, f"Error interno: {str(e)}"
 
-    def reset_password_usuario(self, usuario_id: int, nueva_password: str = None) -> Tuple[bool, str, Optional[str]]:
+    def reset_password_usuario(
+        self, usuario_id: int, nueva_password: str = None
+    ) -> Tuple[bool, str, Optional[str]]:
         """
         Restablecer contraseña de un usuario
 
@@ -579,10 +617,14 @@ class UsuariosController:
         """
         try:
             # Verificar permisos
-            if not self.has_permission(UsuarioModel.ROL_ADMINISTRADOR):
-                return False, "Solo administradores pueden restablecer contraseñas", None
+            if not self.has_permission(UsuariosModel.ROL_ADMINISTRADOR):
+                return (
+                    False,
+                    "Solo administradores pueden restablecer contraseñas",
+                    None,
+                )
 
-            usuario = UsuarioModel.get_by_id(usuario_id)
+            usuario = UsuariosModel.get_by_id(usuario_id)
             if not usuario:
                 return False, f"No se encontró usuario con ID {usuario_id}", None
 
@@ -590,7 +632,9 @@ class UsuariosController:
             return usuario.reset_password(nueva_password)
 
         except Exception as e:
-            logger.error(f"Error al restablecer contraseña del usuario {usuario_id}: {e}")
+            logger.error(
+                f"Error al restablecer contraseña del usuario {usuario_id}: {e}"
+            )
             return False, f"Error interno: {str(e)}", None
 
     def obtener_estadisticas_usuarios(self) -> Dict[str, Any]:
@@ -614,16 +658,18 @@ class UsuariosController:
             usuarios_por_rol = self.contar_usuarios_por_rol(activos=True)
 
             # Últimos usuarios creados (últimos 30 días)
-            fecha_limite = (datetime.now().replace(day=datetime.now().day - 30) 
-                          if datetime.now().day > 30 else 
-                          datetime.now().replace(month=datetime.now().month - 1, day=1))
+            fecha_limite = (
+                datetime.now().replace(day=datetime.now().day - 30)
+                if datetime.now().day > 30
+                else datetime.now().replace(month=datetime.now().month - 1, day=1)
+            )
 
             query = """
                 SELECT COUNT(*) as count FROM usuarios 
                 WHERE created_at >= ?
             """
-            resultados = UsuarioModel.query(query, [fecha_limite.isoformat()])
-            nuevos_ultimo_mes = resultados[0]['count'] if resultados else 0
+            resultados = UsuariosModel.query(query, [fecha_limite.isoformat()])
+            nuevos_ultimo_mes = resultados[0]["count"] if resultados else 0
 
             # Usuarios con login reciente (últimos 7 días)
             fecha_login_reciente = datetime.now().replace(day=datetime.now().day - 7)
@@ -631,35 +677,39 @@ class UsuariosController:
                 SELECT COUNT(*) as count FROM usuarios 
                 WHERE last_login >= ? AND activo = 1
             """
-            resultados = UsuarioModel.query(query, [fecha_login_reciente.isoformat()])
-            login_recientes = resultados[0]['count'] if resultados else 0
+            resultados = UsuariosModel.query(query, [fecha_login_reciente.isoformat()])
+            login_recientes = resultados[0]["count"] if resultados else 0
 
             return {
-                'total_usuarios': total_usuarios,
-                'usuarios_activos': usuarios_activos,
-                'usuarios_inactivos': usuarios_inactivos,
-                'porcentaje_activos': (usuarios_activos / total_usuarios * 100) if total_usuarios > 0 else 0,
-                'usuarios_por_rol': usuarios_por_rol,
-                'nuevos_ultimo_mes': nuevos_ultimo_mes,
-                'login_recientes': login_recientes,
-                'fecha_consulta': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+                "total_usuarios": total_usuarios,
+                "usuarios_activos": usuarios_activos,
+                "usuarios_inactivos": usuarios_inactivos,
+                "porcentaje_activos": (
+                    (usuarios_activos / total_usuarios * 100)
+                    if total_usuarios > 0
+                    else 0
+                ),
+                "usuarios_por_rol": usuarios_por_rol,
+                "nuevos_ultimo_mes": nuevos_ultimo_mes,
+                "login_recientes": login_recientes,
+                "fecha_consulta": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
             }
 
         except Exception as e:
             logger.error(f"Error al obtener estadísticas de usuarios: {e}")
             return {
-                'total_usuarios': 0,
-                'usuarios_activos': 0,
-                'usuarios_inactivos': 0,
-                'porcentaje_activos': 0,
-                'usuarios_por_rol': {},
-                'nuevos_ultimo_mes': 0,
-                'login_recientes': 0,
-                'fecha_consulta': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
-                'error': str(e)
+                "total_usuarios": 0,
+                "usuarios_activos": 0,
+                "usuarios_inactivos": 0,
+                "porcentaje_activos": 0,
+                "usuarios_por_rol": {},
+                "nuevos_ultimo_mes": 0,
+                "login_recientes": 0,
+                "fecha_consulta": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                "error": str(e),
             }
 
-    def inicializar_admin_default(self) -> Tuple[bool, str, Optional[UsuarioModel]]:
+    def inicializar_admin_default(self) -> Tuple[bool, str, Optional[UsuariosModel]]:
         """
         Inicializar administrador por defecto si no existe
 
@@ -667,7 +717,7 @@ class UsuariosController:
             Tuple (éxito, mensaje, usuario)
         """
         try:
-            admin = UsuarioModel.create_default_admin()
+            admin = UsuariosModel.create_default_admin()
             if admin:
                 mensaje = "Administrador por defecto creado exitosamente"
                 return True, mensaje, admin
@@ -679,9 +729,7 @@ class UsuariosController:
             return False, f"Error interno: {str(e)}", None
 
     def generar_reporte_usuarios(
-        self, 
-        formato: str = 'texto',
-        incluir_inactivos: bool = False
+        self, formato: str = "texto", incluir_inactivos: bool = False
     ) -> str:
         """
         Generar reporte de usuarios
@@ -696,10 +744,10 @@ class UsuariosController:
         try:
             usuarios = self.obtener_usuarios(
                 activos=not incluir_inactivos,  # Si queremos inactivos, activos=False
-                limite=0  # Sin límite
+                limite=0,  # Sin límite
             )
 
-            if formato.lower() == 'html':
+            if formato.lower() == "html":
                 return self._generar_reporte_html(usuarios, incluir_inactivos)
             else:
                 return self._generar_reporte_texto(usuarios, incluir_inactivos)
@@ -709,9 +757,7 @@ class UsuariosController:
             return f"Error al generar reporte: {str(e)}"
 
     def _generar_reporte_texto(
-        self, 
-        usuarios: List[UsuarioModel],
-        incluir_inactivos: bool
+        self, usuarios: List[UsuariosModel], incluir_inactivos: bool
     ) -> str:
         """Generar reporte en formato texto"""
         titulo = "REPORTE DE USUARIOS DEL SISTEMA"
@@ -722,7 +768,9 @@ class UsuariosController:
         reporte.append("=" * 80)
         reporte.append(titulo.center(80))
         reporte.append("=" * 80)
-        reporte.append(f"Fecha de generación: {datetime.now().strftime('%d/%m/%Y %H:%M')}")
+        reporte.append(
+            f"Fecha de generación: {datetime.now().strftime('%d/%m/%Y %H:%M')}"
+        )
         reporte.append(f"Total de usuarios: {len(usuarios)}")
         reporte.append("-" * 80)
 
@@ -737,7 +785,7 @@ class UsuariosController:
                 if isinstance(usuario.last_login, str):
                     last_login = usuario.last_login
                 else:
-                    last_login = usuario.last_login.strftime('%d/%m/%Y %H:%M')
+                    last_login = usuario.last_login.strftime("%d/%m/%Y %H:%M")
                 reporte.append(f"     Último login: {last_login}")
             reporte.append("")
 
@@ -759,9 +807,7 @@ class UsuariosController:
         return "\n".join(reporte)
 
     def _generar_reporte_html(
-        self, 
-        usuarios: List[UsuarioModel],
-        incluir_inactivos: bool
+        self, usuarios: List[UsuariosModel], incluir_inactivos: bool
     ) -> str:
         """Generar reporte en formato HTML"""
         titulo = "Reporte de Usuarios del Sistema"
@@ -834,7 +880,7 @@ class UsuariosController:
                     if isinstance(usuario.last_login, str):
                         last_login = usuario.last_login
                     else:
-                        last_login = usuario.last_login.strftime('%d/%m/%Y %H:%M')
+                        last_login = usuario.last_login.strftime("%d/%m/%Y %H:%M")
 
                 html += f"""
                 <tr>
@@ -880,9 +926,7 @@ class UsuariosController:
         return html
 
     def exportar_usuarios_a_csv(
-        self,
-        incluir_inactivos: bool = False,
-        archivo_salida: Optional[str] = None
+        self, incluir_inactivos: bool = False, archivo_salida: Optional[str] = None
     ) -> Tuple[bool, str, Optional[str]]:
         """
         Exportar usuarios a archivo CSV
@@ -898,7 +942,7 @@ class UsuariosController:
             # Obtener usuarios
             usuarios = self.obtener_usuarios(
                 activos=not incluir_inactivos,  # Si queremos inactivos, activos=False
-                limite=0
+                limite=0,
             )
 
             if not usuarios:
@@ -906,55 +950,65 @@ class UsuariosController:
 
             # Generar nombre de archivo si no se proporciona
             if not archivo_salida:
-                timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
                 estado = "todos" if incluir_inactivos else "activos"
                 archivo_salida = f"usuarios_{estado}_{timestamp}.csv"
 
             # Asegurar extensión .csv
-            if not archivo_salida.lower().endswith('.csv'):
-                archivo_salida += '.csv'
+            if not archivo_salida.lower().endswith(".csv"):
+                archivo_salida += ".csv"
 
             # Crear directorio si no existe
             archivo_path = Path(archivo_salida)
             archivo_path.parent.mkdir(parents=True, exist_ok=True)
 
             # Escribir CSV
-            with open(archivo_path, 'w', encoding='utf-8') as f:
+            with open(archivo_path, "w", encoding="utf-8") as f:
                 # Encabezados
                 encabezados = [
-                    'ID', 'Usuario', 'Nombre Completo', 'Email', 
-                    'Rol', 'Activo', 'Fecha Creación', 'Último Login'
+                    "ID",
+                    "Usuario",
+                    "Nombre Completo",
+                    "Email",
+                    "Rol",
+                    "Activo",
+                    "Fecha Creación",
+                    "Último Login",
                 ]
-                f.write(';'.join(encabezados) + '\n')
+                f.write(";".join(encabezados) + "\n")
 
                 # Datos
                 for usuario in usuarios:
                     # Formatear fechas
                     fecha_creacion = ""
-                    if hasattr(usuario, 'created_at') and usuario.created_at:
+                    if hasattr(usuario, "created_at") and usuario.created_at:
                         if isinstance(usuario.created_at, str):
                             fecha_creacion = usuario.created_at
                         else:
-                            fecha_creacion = usuario.created_at.strftime('%Y-%m-%d %H:%M:%S')
+                            fecha_creacion = usuario.created_at.strftime(
+                                "%Y-%m-%d %H:%M:%S"
+                            )
 
                     ultimo_login = ""
                     if usuario.last_login:
                         if isinstance(usuario.last_login, str):
                             ultimo_login = usuario.last_login
                         else:
-                            ultimo_login = usuario.last_login.strftime('%Y-%m-%d %H:%M:%S')
+                            ultimo_login = usuario.last_login.strftime(
+                                "%Y-%m-%d %H:%M:%S"
+                            )
 
                     fila = [
                         str(usuario.id),
                         usuario.username,
                         usuario.nombre_completo,
-                        usuario.email or '',
+                        usuario.email or "",
                         usuario.rol,
-                        'Sí' if usuario.activo else 'No',
+                        "Sí" if usuario.activo else "No",
                         fecha_creacion,
-                        ultimo_login or ''
+                        ultimo_login or "",
                     ]
-                    f.write(';'.join(fila) + '\n')
+                    f.write(";".join(fila) + "\n")
 
             mensaje = f"Exportados {len(usuarios)} usuarios a {archivo_path}"
             return True, mensaje, str(archivo_path)
@@ -966,9 +1020,7 @@ class UsuariosController:
     # ==================== VALIDACIONES ====================
 
     def _validar_datos_usuario(
-        self, 
-        datos: Dict[str, Any], 
-        es_actualizacion: bool = False
+        self, datos: Dict[str, Any], es_actualizacion: bool = False
     ) -> List[str]:
         """
         Validar datos del usuario
@@ -984,38 +1036,42 @@ class UsuariosController:
 
         # Validar campos requeridos (solo para creación)
         if not es_actualizacion:
-            campos_requeridos = ['username', 'nombre_completo']
+            campos_requeridos = ["username", "nombre_completo"]
             for campo in campos_requeridos:
-                if campo not in datos or not str(datos.get(campo, '')).strip():
+                if campo not in datos or not str(datos.get(campo, "")).strip():
                     errores.append(f"El campo '{campo}' es requerido")
 
         # Validar username
-        if 'username' in datos and datos['username']:
-            valido, mensaje = UsuarioModel.validate_username(datos['username'])
+        if "username" in datos and datos["username"]:
+            valido, mensaje = UsuariosModel.validate_username(datos["username"])
             if not valido:
                 errores.append(mensaje)
 
         # Validar contraseña (solo si se proporciona)
-        if 'password' in datos and datos['password']:
-            valido, mensaje = UsuarioModel.validate_password(datos['password'])
+        if "password" in datos and datos["password"]:
+            valido, mensaje = UsuariosModel.validate_password(datos["password"])
             if not valido:
                 errores.append(mensaje)
 
         # Validar email si se proporciona
-        if 'email' in datos and datos['email']:
-            valido, mensaje = UsuarioModel.validate_email(datos['email'])
+        if "email" in datos and datos["email"]:
+            valido, mensaje = UsuariosModel.validate_email(datos["email"])
             if not valido:
                 errores.append(mensaje)
 
         # Validar nombre completo si se proporciona
-        if 'nombre_completo' in datos and datos['nombre_completo']:
-            valido, mensaje = UsuarioModel.validate_nombre_completo(datos['nombre_completo'])
+        if "nombre_completo" in datos and datos["nombre_completo"]:
+            valido, mensaje = UsuariosModel.validate_nombre_completo(
+                datos["nombre_completo"]
+            )
             if not valido:
                 errores.append(mensaje)
 
         # Validar rol si se proporciona
-        if 'rol' in datos and datos['rol']:
-            if datos['rol'] not in UsuarioModel.ROLES:
-                errores.append(f"Rol inválido. Roles válidos: {', '.join(UsuarioModel.ROLES)}")
+        if "rol" in datos and datos["rol"]:
+            if datos["rol"] not in UsuariosModel.ROLES:
+                errores.append(
+                    f"Rol inválido. Roles válidos: {', '.join(UsuariosModel.ROLES)}"
+                )
 
         return errores

@@ -21,27 +21,23 @@ from .plan_pago_model import PlanPagoModel
 from .programa_academico_model import ProgramasAcademicosModel
 from .usuarios_model import UsuariosModel
 
-# Para compatibilidad, también exportar como ProgramaAcademicoModel (singular)
-ProgramaAcademicoModel = ProgramasAcademicosModel
-
 # Lista de todos los modelos para fácil importación
 __all__ = [
-    'BaseModel',
-    'ProgramaAcademicoModel',      # Nombre singular para compatibilidad
-    'ProgramasAcademicosModel',    # Nombre original (plural)
-    'EstudianteModel',
-    'DocenteModel',
-    'MatriculaModel',
-    'UsuariosModel',
-    'EmpresaModel',
-    'DashboardModel',
-    'CuotaModel',
-    'PlanPagoModel',
-    'FacturasModel',
-    'GastoModel',
-    'IngresoModel',
-    'MovimientoCajaModel',
-    'ConfiguracionesModel',
-    'AuditoriaTransaccionesModel',
-    'ComprobantesAdjuntosModel',
+    "BaseModel",  # Nombre singular para compatibilidad
+    "ProgramasAcademicosModel",  # Nombre original (plural)
+    "EstudianteModel",
+    "DocenteModel",
+    "MatriculaModel",
+    "UsuariosModel",
+    "EmpresaModel",
+    "DashboardModel",
+    "CuotaModel",
+    "PlanPagoModel",
+    "FacturasModel",
+    "GastoModel",
+    "IngresoModel",
+    "MovimientoCajaModel",
+    "ConfiguracionesModel",
+    "AuditoriaTransaccionesModel",
+    "ComprobantesAdjuntosModel",
 ]

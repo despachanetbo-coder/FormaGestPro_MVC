@@ -36,12 +36,13 @@ from PySide6.QtGui import QIcon, QFont, QColor, QAction
 from app.models.ingreso_model import IngresoModel
 from app.models.cuota_model import CuotaModel
 from app.models.estudiante_model import EstudianteModel
-from app.models.programa_academico_model import ProgramaAcademicoModel
+from app.models.programa_academico_model import ProgramasAcademicosModel
+from .base_tab import BaseTab
 
 logger = logging.getLogger(__name__)
 
 
-class FinancieroTab(QWidget):
+class FinancieroTab(BaseTab):
     """Pestaña para gestión financiera con paginación"""
 
     # Señales para comunicación con MainWindow
@@ -51,12 +52,13 @@ class FinancieroTab(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
 
+        # INICIALIZAR ANTES de setup_ui
         self.pagos_data = []
         self.pagos_paginados = []
         self.pagos_filtrados_actuales = []
         self.current_filter = "todos"
         self.current_page = 1
-        self.records_per_page = 10  # Mostrar 10 registros por página
+        self.records_per_page = 10
         self.total_pages = 1
 
         self.setup_ui()
@@ -561,7 +563,7 @@ class FinancieroTab(QWidget):
             self.lbl_estado.setText("Cargando pagos...")
 
             # Obtener todos los pagos
-            self.pagos_data = IngresoModel.get_all()
+            self.pagos_data = IngresoModel.get_all_records(IngresoModel())
 
             # Resetear paginación
             self.current_page = 1

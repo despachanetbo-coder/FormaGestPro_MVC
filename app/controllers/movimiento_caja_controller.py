@@ -9,8 +9,8 @@ from decimal import Decimal
 from typing import Dict, List, Optional, Tuple, Any, Union
 
 from app.models.movimiento_caja_model import MovimientoCajaModel
-from app.models.programa_academico_model import ProgramaAcademicoModel
-from app.models.usuarios_model import UsuarioModel
+from app.models.programa_academico_model import ProgramasAcademicosModel
+from app.models.usuarios_model import UsuariosModel
 from app.models.ingreso_model import IngresoModel
 from app.models.gasto_model import GastoModel
 from app.models.facturas_model import FacturaModel
@@ -21,7 +21,7 @@ logger = logging.getLogger(__name__)
 class MovimientoCajaController:
     """Controlador para la gestión de movimientos de caja"""
 
-    def __init__(self, db_path: str = None):
+    def __init__(self, db_path: str = None):  # type:ignore
         """
         Inicializar controlador de movimientos de caja
 
@@ -34,12 +34,12 @@ class MovimientoCajaController:
     # ==================== PROPIEDADES ====================
 
     @property
-    def current_usuario(self) -> Optional[UsuarioModel]:
+    def current_usuario(self) -> Optional[UsuariosModel]:
         """Obtener usuario actual"""
         return self._current_usuario
 
     @current_usuario.setter
-    def current_usuario(self, usuario: UsuarioModel):
+    def current_usuario(self, usuario: UsuariosModel):
         """Establecer usuario actual"""
         self._current_usuario = usuario
 
@@ -81,10 +81,12 @@ class MovimientoCajaController:
 
             # Crear el movimiento
             movimiento = MovimientoCajaModel(**datos)
-            movimiento_id = movimiento.save()
+            movimiento_id = movimiento.commit()
 
             if movimiento_id:
-                movimiento_creado = MovimientoCajaModel.get_by_id(movimiento_id)
+                movimiento_creado = MovimientoCajaModel.get_by_id(
+                    MovimientoCajaModel(), movimiento_id
+                )
                 mensaje = f"Movimiento registrado exitosamente (ID: {movimiento_id})"
 
                 logger.info(
@@ -109,7 +111,7 @@ class MovimientoCajaController:
             Modelo de movimiento o None
         """
         try:
-            return MovimientoCajaModel.get_by_id(movimiento_id)
+            return MovimientoCajaModel.get_by_id(MovimientoCajaModel(), Mmovimiento_id)
         except Exception as e:
             logger.error(f"Error al obtener movimiento {movimiento_id}: {e}")
             return None
@@ -1304,7 +1306,7 @@ class MovimientoCajaController:
                     from app.models.matricula_model import MatriculaModel
                     from app.models.estudiante_model import EstudianteModel
 
-                    # from app.models.programa_academico_model import ProgramaAcademicoModel
+                    # from app.models.programa_academico_model import ProgramasAcademicosModel
 
                     # Obtener matrícula
                     matricula = MatriculaModel.get_by_id(pago.matricula_id)
@@ -1317,7 +1319,7 @@ class MovimientoCajaController:
                             )
 
                         # Obtener programa
-                        programa = ProgramaAcademicoModel.get_by_id(
+                        programa = ProgramasAcademicosModel.get_by_id(
                             matricula.programa_id
                         )
                         if programa:

@@ -9,10 +9,12 @@ from datetime import datetime
 
 
 class DocenteModel(BaseModel):
+    table_name = "docentes"
+    primary_key = "id"
+
     def __init__(self):
         """Inicializa el modelo de docentes"""
         super().__init__()
-        self.table_name = "docentes"
 
     # ============ MÉTODOS CRUD BÁSICOS ============
 
@@ -139,41 +141,15 @@ class DocenteModel(BaseModel):
 
     # ============ MÉTODOS DE CONSULTA ESPECÍFICOS ============
 
-    def get_all(self, estado="Activo", limit=100, offset=0):
-        """
-        Obtiene todos los docentes con paginación
-        Args:
-            estado: Filtrar por estado (Activo/Inactivo/Todos)
-            limit: Límite de registros
-            offset: Desplazamiento para paginación
-        Returns:
-            Lista de docentes
-        """
-        try:
-            if estado == "Todos":
-                query = """
-                SELECT d.*, dep.nombre as departamento_nombre 
-                FROM docentes d 
-                LEFT JOIN departamentos dep ON d.departamento_id = dep.id 
-                ORDER BY d.id DESC 
-                LIMIT %s OFFSET %s
-                """
-                params = (limit, offset)
-            else:
-                query = """
-                SELECT d.*, dep.nombre as departamento_nombre 
-                FROM docentes d 
-                LEFT JOIN departamentos dep ON d.departamento_id = dep.id 
-                WHERE d.estado = %s 
-                ORDER BY d.id DESC 
-                LIMIT %s OFFSET %s
-                """
-                params = (estado, limit, offset)
+    def get_all(self, **kwargs):
+        """Obtener todos los docentes"""
+        return super().get_all_records(**kwargs)
 
-            return self.execute_query(query, params)
-        except Exception as e:
-            print(f"Error obteniendo todos los docentes: {e}")
-            return []
+    @classmethod
+    def find_by_id(cls, docente_id):
+        """Encontrar docente por ID"""
+        model = cls()
+        return model.get_by_id(docente_id)
 
     def search(self, search_term, estado="Activo"):
         """
@@ -249,15 +225,20 @@ class DocenteModel(BaseModel):
             print(f"Error obteniendo total docentes: {e}")
             return 0
 
+    # CORRECCIÓN en get_distribucion_genero() método:
     def get_distribucion_genero(self, estado="Activo"):
         """
         Obtiene distribución de docentes por género
-        Args:
-            estado: Filtrar por estado
-        Returns:
-            Lista de diccionarios con género y cantidad
+        CORRECCIÓN: Verificar si existe la columna 'genero'
         """
         try:
+            # VERIFICAR si la tabla tiene columna 'genero'
+            columns = self.get_table_columns("docentes")
+
+            if "genero" not in columns:
+                print("⚠ La tabla docentes no tiene columna 'genero'")
+                return []  # Devolver lista vacía en lugar de error
+
             if estado == "Todos":
                 query = """
                 SELECT 
@@ -276,6 +257,8 @@ class DocenteModel(BaseModel):
                 """
                 params = ()
             else:
+                # CORRECCIÓN: Usar 'activo' en lugar de 'estado'
+                estado_bool = True if estado == "Activo" else False
                 query = """
                 SELECT 
                     CASE 
@@ -284,7 +267,7 @@ class DocenteModel(BaseModel):
                     END as genero,
                     COUNT(*) as cantidad
                 FROM docentes
-                WHERE estado = %s
+                WHERE activo = %s
                 GROUP BY 
                     CASE 
                         WHEN genero IS NULL OR genero = '' THEN 'No especificado'
@@ -292,11 +275,11 @@ class DocenteModel(BaseModel):
                     END
                 ORDER BY cantidad DESC
                 """
-                params = (estado,)
+                params = (estado_bool,)
 
-            return self.execute_query(query, params)
+            return self.fetch_all(query, params)
         except Exception as e:
-            print(f"Error obteniendo distribución por género: {e}")
+            print(f"✗ Error obteniendo distribución por género: {e}")
             return []
 
     def get_docentes_por_departamento(self, estado="Activo", limit=10):

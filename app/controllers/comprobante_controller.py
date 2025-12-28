@@ -10,22 +10,24 @@ from typing import List, Dict, Optional, Tuple
 # Importar modelos y servicios
 from app.models.movimiento_caja_model import MovimientoCajaModel
 from database import Database
-from app.models.usuarios_model import UsuarioModel
+from app.models.usuarios_model import UsuariosModel
 
 logger = logging.getLogger(__name__)
 
 # Asegurar que existe el directorio comprobantes
-COMPROBANTES_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "comprobantes")
+COMPROBANTES_DIR = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "comprobantes"
+)
 os.makedirs(COMPROBANTES_DIR, exist_ok=True)
 
 
 class ComprobanteController:
     """Controlador para la gestión de comprobantes"""
 
-    def __init__(self, db_path: str = None):
+    def __init__(self, db_path: str = None):  # type:ignore
         """
         Inicializar controlador de comprobantes
-        
+
         Args:
             db_path: Ruta a la base de datos (opcional)
         """
@@ -34,12 +36,12 @@ class ComprobanteController:
         self.db = Database()
 
     @property
-    def current_usuario(self) -> Optional[UsuarioModel]:
+    def current_usuario(self) -> Optional[UsuariosModel]:
         """Obtener usuario actual"""
         return self._current_usuario
 
     @current_usuario.setter
-    def current_usuario(self, usuario: UsuarioModel):
+    def current_usuario(self, usuario: UsuariosModel):
         """Establecer usuario actual"""
         self._current_usuario = usuario
 
@@ -65,7 +67,7 @@ class ComprobanteController:
             fecha = datetime.now().date().isoformat()
         else:
             try:
-                datetime.strptime(fecha_str, '%Y-%m-%d')
+                datetime.strptime(fecha_str, "%Y-%m-%d")
                 fecha = fecha_str
             except ValueError:
                 print("❌ Formato de fecha inválido. Use YYYY-MM-DD")
@@ -103,10 +105,10 @@ class ComprobanteController:
         print("  2. EGRESO")
 
         opcion = input("Seleccione tipo (1-2): ").strip()
-        if opcion == '1':
-            tipo = 'INGRESO'
-        elif opcion == '2':
-            tipo = 'EGRESO'
+        if opcion == "1":
+            tipo = "INGRESO"
+        elif opcion == "2":
+            tipo = "EGRESO"
         else:
             print("❌ Opción no válida")
             return []
@@ -116,7 +118,7 @@ class ComprobanteController:
 
         if fecha_str:
             try:
-                datetime.strptime(fecha_str, '%Y-%m-%d')
+                datetime.strptime(fecha_str, "%Y-%m-%d")
                 query = """
                 SELECT * FROM movimientos_caja 
                 WHERE tipo = ? AND DATE(fecha) = ?
@@ -149,7 +151,7 @@ class ComprobanteController:
             print(f"     Descripción: {mov['descripcion']}")
             print(f"     Fecha: {mov['fecha']}")
             print("-" * 40)
-            total += mov['monto']
+            total += mov["monto"]
 
         print(f"\n💰 TOTAL {tipo}: ${total:.2f}")
         return movimientos
@@ -164,8 +166,8 @@ class ComprobanteController:
             fecha_fin = input("Fecha fin (YYYY-MM-DD): ").strip()
 
             # Validar fechas
-            datetime.strptime(fecha_inicio, '%Y-%m-%d')
-            datetime.strptime(fecha_fin, '%Y-%m-%d')
+            datetime.strptime(fecha_inicio, "%Y-%m-%d")
+            datetime.strptime(fecha_fin, "%Y-%m-%d")
 
             query = """
             SELECT * FROM movimientos_caja 
@@ -186,10 +188,10 @@ class ComprobanteController:
             total_egresos = 0
 
             for mov in movimientos:
-                tipo = mov['tipo']
-                monto = mov['monto']
+                tipo = mov["tipo"]
+                monto = mov["monto"]
 
-                if tipo == 'INGRESO':
+                if tipo == "INGRESO":
                     total_ingresos += monto
                     tipo_str = "💰 INGRESO"
                 else:
@@ -230,8 +232,8 @@ class ComprobanteController:
             return []
 
         for mov in movimientos:
-            tipo = mov['tipo']
-            if tipo == 'INGRESO':
+            tipo = mov["tipo"]
+            if tipo == "INGRESO":
                 tipo_str = "💰 INGRESO"
             else:
                 tipo_str = "💸 EGRESO"
@@ -246,7 +248,7 @@ class ComprobanteController:
     def generar_comprobante_seleccionado(self) -> Tuple[bool, str]:
         """
         Permite seleccionar un movimiento y generar su comprobante
-        
+
         Returns:
             Tuple (éxito, mensaje)
         """
@@ -263,21 +265,23 @@ class ComprobanteController:
             movimiento_id = int(movimiento_id)
 
             # Verificar que existe
-            movimiento = MovimientoCajaModel.get_by_id(movimiento_id)
+            movimiento = MovimientoCajaModel.get_by_id(
+                MovimientoCajaModel(), movimiento_id
+            )
             if not movimiento:
                 return False, f"No se encontró movimiento con ID {movimiento_id}"
 
             # Mostrar información del movimiento
             print(f"\n📄 Información del movimiento:")
-            print(f"   ID: {movimiento.id}")
-            print(f"   Tipo: {movimiento.tipo}")
-            print(f"   Monto: Bs. {float(movimiento.monto):,.2f}")
-            print(f"   Descripción: {movimiento.descripcion}")
-            print(f"   Fecha: {movimiento.fecha}")
+            print(f"   ID: {movimiento.id}")  # type:ignore
+            print(f"   Tipo: {movimiento.tipo}")  # type:ignore
+            print(f"   Monto: Bs. {float(movimiento.monto):,.2f}")  # type:ignore
+            print(f"   Descripción: {movimiento.descripcion}")  # type:ignore
+            print(f"   Fecha: {movimiento.fecha}")  # type:ignore
 
             # Confirmar generación
             confirmar = input("\n¿Generar comprobante? (s/n): ").strip().lower()
-            if confirmar != 's':
+            if confirmar != "s":
                 return False, "Generación cancelada por el usuario"
 
             # Generar comprobante básico
@@ -285,10 +289,12 @@ class ComprobanteController:
             comprobante = self._generar_comprobante_texto(movimiento)
 
             # Guardar en archivo
-            fecha = datetime.now().strftime('%Y%m%d_%H%M%S')
-            archivo_path = os.path.join(COMPROBANTES_DIR, f"comprobante_{movimiento_id}_{fecha}.txt")
+            fecha = datetime.now().strftime("%Y%m%d_%H%M%S")
+            archivo_path = os.path.join(
+                COMPROBANTES_DIR, f"comprobante_{movimiento_id}_{fecha}.txt"
+            )
 
-            with open(archivo_path, 'w', encoding='utf-8') as f:
+            with open(archivo_path, "w", encoding="utf-8") as f:
                 f.write(comprobante)
 
             print(f"\n✅ Comprobante generado exitosamente!")
@@ -324,7 +330,9 @@ class ComprobanteController:
         comprobante.append(f"  Fecha Registro: {movimiento.fecha}")
 
         if movimiento.referencia_tipo:
-            comprobante.append(f"  Referencia: {movimiento.referencia_tipo} #{movimiento.referencia_id}")
+            comprobante.append(
+                f"  Referencia: {movimiento.referencia_tipo} #{movimiento.referencia_id}"
+            )
 
         comprobante.append("-" * 50)
 
@@ -345,40 +353,56 @@ class ComprobanteController:
             self.mostrar_menu_comprobantes()
             opcion = input("\n👉 Seleccione una opción: ").strip()
 
-            if opcion == '1':
+            if opcion == "1":
                 movimientos = self.buscar_movimientos_por_fecha()
                 if movimientos:
-                    generar = input("\n¿Generar comprobante para algún movimiento? (s/n): ").strip().lower()
-                    if generar == 's':
+                    generar = (
+                        input("\n¿Generar comprobante para algún movimiento? (s/n): ")
+                        .strip()
+                        .lower()
+                    )
+                    if generar == "s":
                         self.generar_comprobante_seleccionado()
 
-            elif opcion == '2':
+            elif opcion == "2":
                 movimientos = self.buscar_movimientos_por_tipo()
                 if movimientos:
-                    generar = input("\n¿Generar comprobante para algún movimiento? (s/n): ").strip().lower()
-                    if generar == 's':
+                    generar = (
+                        input("\n¿Generar comprobante para algún movimiento? (s/n): ")
+                        .strip()
+                        .lower()
+                    )
+                    if generar == "s":
                         self.generar_comprobante_seleccionado()
 
-            elif opcion == '3':
+            elif opcion == "3":
                 movimientos = self.buscar_movimientos_por_rango()
                 if movimientos:
-                    generar = input("\n¿Generar comprobante para algún movimiento? (s/n): ").strip().lower()
-                    if generar == 's':
+                    generar = (
+                        input("\n¿Generar comprobante para algún movimiento? (s/n): ")
+                        .strip()
+                        .lower()
+                    )
+                    if generar == "s":
                         self.generar_comprobante_seleccionado()
 
-            elif opcion == '4':
+            elif opcion == "4":
                 movimientos = self.ver_ultimos_movimientos()
                 if movimientos:
-                    generar = input("\n¿Generar comprobante para algún movimiento? (s/n): ").strip().lower()
-                    if generar == 's':
+                    generar = (
+                        input("\n¿Generar comprobante para algún movimiento? (s/n): ")
+                        .strip()
+                        .lower()
+                    )
+                    if generar == "s":
                         self.generar_comprobante_seleccionado()
 
-            elif opcion == '5':
+            elif opcion == "5":
                 exito, mensaje = self.generar_comprobante_seleccionado()
                 if not exito:
                     print(f"❌ {mensaje}")
 
-            elif opcion == '6':
+            elif opcion == "6":
                 break
 
             else:

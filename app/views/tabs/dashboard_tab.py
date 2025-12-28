@@ -657,8 +657,16 @@ class DashboardTab(BaseTab):
 
     def _update_metrics_cards(self):
         """Actualiza las tarjetas de métricas"""
-        if not hasattr(self, "metrics_grid"):
-            return
+        if not hasattr(self, "dashboard_data") or self.dashboard_data is None:
+            print("⚠ dashboard_data es None, usando valores por defecto")
+            self.dashboard_data = {
+                "resumen": {
+                    "total_estudiantes": 0,
+                    "total_docentes": 0,
+                    "cursos_activos": 0,
+                    "total_cursos": 0,
+                }
+            }
 
         # Limpiar tarjetas existentes
         while self.metrics_grid.count():

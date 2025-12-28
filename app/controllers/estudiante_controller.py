@@ -9,12 +9,14 @@ from pathlib import Path
 from typing import Dict, List, Optional, Tuple, Any, Union
 
 from app.models.estudiante_model import EstudianteModel
-from app.models.programa_academico_model import ProgramaAcademicoModel  # ¡Cambiado aquí!
+from app.models.programa_academico_model import ProgramasAcademicosModel
 
 logger = logging.getLogger(__name__)
 
+
 class EstudianteController:
     """Controlador para la gestión de estudiantes"""
+
     def __init__(self, db_path: str = None):
         """
         Inicializar controlador de estudiantes
@@ -26,7 +28,9 @@ class EstudianteController:
 
     # ==================== OPERACIONES CRUD ====================
 
-    def crear_estudiante(self, datos: Dict[str, Any]) -> Tuple[bool, str, Optional[EstudianteModel]]:
+    def crear_estudiante(
+        self, datos: Dict[str, Any]
+    ) -> Tuple[bool, str, Optional[EstudianteModel]]:
         """
         Crear un nuevo estudiante
 
@@ -43,13 +47,16 @@ class EstudianteController:
                 return False, "Errores de validación: " + "; ".join(errores), None
 
             # Verificar si ya existe un estudiante con el mismo CI
-            if 'ci_numero' in datos and 'ci_expedicion' in datos:
+            if "ci_numero" in datos and "ci_expedicion" in datos:
                 existente = EstudianteModel.buscar_por_ci(
-                    datos['ci_numero'], 
-                    datos['ci_expedicion']
+                    datos["ci_numero"], datos["ci_expedicion"]
                 )
                 if existente:
-                    return False, f"Ya existe un estudiante con CI {datos['ci_numero']}-{datos['ci_expedicion']}", None
+                    return (
+                        False,
+                        f"Ya existe un estudiante con CI {datos['ci_numero']}-{datos['ci_expedicion']}",
+                        None,
+                    )
 
             # Crear el estudiante
             estudiante = EstudianteModel(**datos)
@@ -66,7 +73,9 @@ class EstudianteController:
             logger.error(f"Error al crear estudiante: {e}")
             return False, f"Error interno: {str(e)}", None
 
-    def actualizar_estudiante(self, estudiante_id: int, datos: Dict[str, Any]) -> Tuple[bool, str, Optional[EstudianteModel]]:
+    def actualizar_estudiante(
+        self, estudiante_id: int, datos: Dict[str, Any]
+    ) -> Tuple[bool, str, Optional[EstudianteModel]]:
         """
         Actualizar un estudiante existente
 
@@ -89,14 +98,18 @@ class EstudianteController:
                 return False, "Errores de validación: " + "; ".join(errores), None
 
             # Verificar duplicados de CI (si se está actualizando el CI)
-            if 'ci_numero' in datos or 'ci_expedicion' in datos:
-                ci_numero = datos.get('ci_numero', estudiante.ci_numero)
-                ci_expedicion = datos.get('ci_expedicion', estudiante.ci_expedicion)
+            if "ci_numero" in datos or "ci_expedicion" in datos:
+                ci_numero = datos.get("ci_numero", estudiante.ci_numero)
+                ci_expedicion = datos.get("ci_expedicion", estudiante.ci_expedicion)
 
                 # Buscar otros estudiantes con el mismo CI
                 otros = EstudianteModel.buscar_por_ci(ci_numero, ci_expedicion)
                 if otros and otros.id != estudiante_id:
-                    return False, f"Ya existe otro estudiante con CI {ci_numero}-{ci_expedicion}", None
+                    return (
+                        False,
+                        f"Ya existe otro estudiante con CI {ci_numero}-{ci_expedicion}",
+                        None,
+                    )
 
             # Actualizar atributos del estudiante
             for key, value in datos.items():
@@ -184,7 +197,9 @@ class EstudianteController:
             logger.error(f"Error al obtener estudiante {estudiante_id}: {e}")
             return None
 
-    def obtener_estudiante_por_ci(self, ci_numero: str, ci_expedicion: str) -> Optional[EstudianteModel]:
+    def obtener_estudiante_por_ci(
+        self, ci_numero: str, ci_expedicion: str
+    ) -> Optional[EstudianteModel]:
         """
         Obtener estudiante por CI
 
@@ -198,17 +213,19 @@ class EstudianteController:
         try:
             return EstudianteModel.buscar_por_ci(ci_numero, ci_expedicion)
         except Exception as e:
-            logger.error(f"Error al obtener estudiante por CI {ci_numero}-{ci_expedicion}: {e}")
+            logger.error(
+                f"Error al obtener estudiante por CI {ci_numero}-{ci_expedicion}: {e}"
+            )
             return None
 
     def obtener_estudiantes(
-        self, 
+        self,
         activos: bool = True,
         programa_id: Optional[int] = None,
         limite: int = 100,
         offset: int = 0,
-        orden_por: str = 'apellidos',
-        orden_asc: bool = True
+        orden_por: str = "apellidos",
+        orden_asc: bool = True,
     ) -> List[EstudianteModel]:
         """
         Obtener lista de estudiantes con filtros
@@ -237,16 +254,16 @@ class EstudianteController:
                 # Necesitaríamos un JOIN con matrículas para obtener el programa
                 # Por ahora, si no hay campo programa_id en estudiantes, ignoramos
                 pass
-            
+
             # Convertir condiciones a string
             where_clause = ""
             if condiciones:
                 where_clause = "WHERE " + " AND ".join(condiciones)
 
             # Validar campo de orden
-            campos_validos = ['apellidos', 'nombres', 'ci_numero', 'fecha_registro']
+            campos_validos = ["apellidos", "nombres", "ci_numero", "fecha_registro"]
             if orden_por not in campos_validos:
-                orden_por = 'apellidos'
+                orden_por = "apellidos"
 
             # Construir orden
             orden = f"{orden_por} {'ASC' if orden_asc else 'DESC'}"
@@ -264,18 +281,21 @@ class EstudianteController:
                 {limit_clause}
             """
 
-            estudiantes = EstudianteModel.query(query, parametros) if parametros else EstudianteModel.query(query)
-            return [EstudianteModel(**est) for est in estudiantes] if estudiantes else []
+            estudiantes = (
+                EstudianteModel.query(query, parametros)
+                if parametros
+                else EstudianteModel.query(query)
+            )
+            return (
+                [EstudianteModel(**est) for est in estudiantes] if estudiantes else []
+            )
 
         except Exception as e:
             logger.error(f"Error al obtener estudiantes: {e}")
             return []
 
     def buscar_estudiantes(
-        self, 
-        criterio: str,
-        valor: str,
-        activos: bool = True
+        self, criterio: str, valor: str, activos: bool = True
     ) -> List[EstudianteModel]:
         """
         Buscar estudiantes por criterio
@@ -297,30 +317,36 @@ class EstudianteController:
             parametros = [1] if activos else []
 
             criterio_lower = criterio.lower()
-            if criterio_lower == 'ci':
-                condiciones.append("(ci_numero LIKE ? OR ci_numero || '-' || ci_expedicion LIKE ?)")
+            if criterio_lower == "ci":
+                condiciones.append(
+                    "(ci_numero LIKE ? OR ci_numero || '-' || ci_expedicion LIKE ?)"
+                )
                 parametros.extend([f"%{valor}%", f"%{valor}%"])
-            elif criterio_lower == 'nombre':
-                condiciones.append("(nombres LIKE ? OR apellidos LIKE ? OR nombres || ' ' || apellidos LIKE ?)")
+            elif criterio_lower == "nombre":
+                condiciones.append(
+                    "(nombres LIKE ? OR apellidos LIKE ? OR nombres || ' ' || apellidos LIKE ?)"
+                )
                 parametros.extend([f"%{valor}%", f"%{valor}%", f"%{valor}%"])
-            elif criterio_lower == 'email':
+            elif criterio_lower == "email":
                 condiciones.append("email LIKE ?")
                 parametros.append(f"%{valor}%")
-            elif criterio_lower == 'telefono':
+            elif criterio_lower == "telefono":
                 condiciones.append("telefono LIKE ?")
                 parametros.append(f"%{valor}%")
-            elif criterio_lower == 'profesion':
+            elif criterio_lower == "profesion":
                 condiciones.append("profesion LIKE ?")
                 parametros.append(f"%{valor}%")
-            elif criterio_lower == 'universidad':
+            elif criterio_lower == "universidad":
                 condiciones.append("universidad_egreso LIKE ?")
                 parametros.append(f"%{valor}%")
             else:
                 # Búsqueda general en varios campos
-                condiciones.append("""
+                condiciones.append(
+                    """
                     (nombres LIKE ? OR apellidos LIKE ? OR email LIKE ? 
                     OR telefono LIKE ? OR profesion LIKE ? OR universidad_egreso LIKE ?)
-                """)
+                """
+                )
                 parametros.extend([f"%{valor}%"] * 6)
 
             where_clause = "WHERE " + " AND ".join(condiciones)
@@ -332,7 +358,9 @@ class EstudianteController:
             """
 
             estudiantes = EstudianteModel.query(query, parametros)
-            return [EstudianteModel(**est) for est in estudiantes] if estudiantes else []
+            return (
+                [EstudianteModel(**est) for est in estudiantes] if estudiantes else []
+            )
 
         except Exception as e:
             logger.error(f"Error al buscar estudiantes ({criterio}={valor}): {e}")
@@ -352,14 +380,16 @@ class EstudianteController:
             where_clause = "WHERE activo = 1" if activos else ""
             query = f"SELECT COUNT(*) as count FROM estudiantes {where_clause}"
             resultado = EstudianteModel.query(query)
-            return resultado[0]['count'] if resultado else 0
+            return resultado[0]["count"] if resultado else 0
         except Exception as e:
             logger.error(f"Error al contar estudiantes: {e}")
             return 0
 
     # ==================== OPERACIONES ESPECÍFICAS ====================
 
-    def guardar_fotografia(self, estudiante_id: int, ruta_foto: str) -> Tuple[bool, str]:
+    def guardar_fotografia(
+        self, estudiante_id: int, ruta_foto: str
+    ) -> Tuple[bool, str]:
         """
         Guardar ruta de fotografía del estudiante
 
@@ -389,6 +419,7 @@ class EstudianteController:
             destino = fotos_dir / nombre_archivo
 
             import shutil
+
             shutil.copy2(ruta_foto, destino)
 
             # Actualizar estudiante
@@ -399,7 +430,9 @@ class EstudianteController:
                 return False, "Error al guardar la ruta de la fotografía"
 
         except Exception as e:
-            logger.error(f"Error al guardar fotografía del estudiante {estudiante_id}: {e}")
+            logger.error(
+                f"Error al guardar fotografía del estudiante {estudiante_id}: {e}"
+            )
             return False, f"Error interno: {str(e)}"
 
     def obtener_fotografia(self, estudiante_id: int) -> Optional[str]:
@@ -421,7 +454,9 @@ class EstudianteController:
             return str(foto_path) if foto_path.exists() else None
 
         except Exception as e:
-            logger.error(f"Error al obtener fotografía del estudiante {estudiante_id}: {e}")
+            logger.error(
+                f"Error al obtener fotografía del estudiante {estudiante_id}: {e}"
+            )
             return None
 
     def obtener_edad_estudiante(self, estudiante_id: int) -> Optional[int]:
@@ -441,7 +476,9 @@ class EstudianteController:
 
             # Convertir string a date
             if isinstance(estudiante.fecha_nacimiento, str):
-                fecha_nac = datetime.strptime(estudiante.fecha_nacimiento, '%Y-%m-%d').date()
+                fecha_nac = datetime.strptime(
+                    estudiante.fecha_nacimiento, "%Y-%m-%d"
+                ).date()
             else:
                 fecha_nac = estudiante.fecha_nacimiento
 
@@ -462,9 +499,7 @@ class EstudianteController:
     # ==================== VALIDACIONES ====================
 
     def _validar_datos_estudiante(
-        self, 
-        datos: Dict[str, Any], 
-        es_actualizacion: bool = False
+        self, datos: Dict[str, Any], es_actualizacion: bool = False
     ) -> List[str]:
         """
         Validar datos del estudiante
@@ -480,58 +515,79 @@ class EstudianteController:
 
         # Validar campos requeridos (solo para creación)
         if not es_actualizacion:
-            campos_requeridos = ['ci_numero', 'ci_expedicion', 'nombres', 'apellidos']
+            campos_requeridos = ["ci_numero", "ci_expedicion", "nombres", "apellidos"]
             for campo in campos_requeridos:
-                if campo not in datos or not str(datos.get(campo, '')).strip():
+                if campo not in datos or not str(datos.get(campo, "")).strip():
                     errores.append(f"El campo '{campo}' es requerido")
 
         # Validar CI
-        if 'ci_numero' in datos and datos['ci_numero']:
-            ci_numero = str(datos['ci_numero']).strip()
+        if "ci_numero" in datos and datos["ci_numero"]:
+            ci_numero = str(datos["ci_numero"]).strip()
             if not ci_numero.isdigit():
                 errores.append("El CI debe contener solo números")
             elif len(ci_numero) < 4 or len(ci_numero) > 10:
                 errores.append("El CI debe tener entre 4 y 10 dígitos")
 
         # Validar expedición
-        if 'ci_expedicion' in datos and datos['ci_expedicion']:
-            expediciones_validas = ['BE', 'CH', 'CB', 'LP', 'OR', 'PD', 'PT', 'SC', 'TJ', 'EX']
-            if datos['ci_expedicion'] not in expediciones_validas:
-                errores.append(f"Expedición inválida. Válidas: {', '.join(expediciones_validas)}")
+        if "ci_expedicion" in datos and datos["ci_expedicion"]:
+            expediciones_validas = [
+                "BE",
+                "CH",
+                "CB",
+                "LP",
+                "OR",
+                "PD",
+                "PT",
+                "SC",
+                "TJ",
+                "EX",
+            ]
+            if datos["ci_expedicion"] not in expediciones_validas:
+                errores.append(
+                    f"Expedición inválida. Válidas: {', '.join(expediciones_validas)}"
+                )
 
         # Validar nombres y apellidos
-        if 'nombres' in datos and datos['nombres']:
-            nombres = str(datos['nombres']).strip()
+        if "nombres" in datos and datos["nombres"]:
+            nombres = str(datos["nombres"]).strip()
             if len(nombres) < 2:
                 errores.append("Los nombres deben tener al menos 2 caracteres")
             if len(nombres) > 100:
                 errores.append("Los nombres no pueden exceder 100 caracteres")
 
-        if 'apellidos' in datos and datos['apellidos']:
-            apellidos = str(datos['apellidos']).strip()
+        if "apellidos" in datos and datos["apellidos"]:
+            apellidos = str(datos["apellidos"]).strip()
             if len(apellidos) < 2:
                 errores.append("Los apellidos deben tener al menos 2 caracteres")
             if len(apellidos) > 100:
                 errores.append("Los apellidos no pueden exceder 100 caracteres")
 
         # Validar email si se proporciona
-        if 'email' in datos and datos['email']:
-            email = str(datos['email']).strip()
-            if email and ('@' not in email or '.' not in email.split('@')[-1]):
+        if "email" in datos and datos["email"]:
+            email = str(datos["email"]).strip()
+            if email and ("@" not in email or "." not in email.split("@")[-1]):
                 errores.append("Formato de email inválido")
 
         # Validar teléfono si se proporciona
-        if 'telefono' in datos and datos['telefono']:
-            telefono = str(datos['telefono']).strip()
-            if telefono and not telefono.replace(' ', '').replace('-', '').replace('+', '').isdigit():
-                errores.append("El teléfono debe contener solo números y caracteres válidos (+ -)")
+        if "telefono" in datos and datos["telefono"]:
+            telefono = str(datos["telefono"]).strip()
+            if (
+                telefono
+                and not telefono.replace(" ", "")
+                .replace("-", "")
+                .replace("+", "")
+                .isdigit()
+            ):
+                errores.append(
+                    "El teléfono debe contener solo números y caracteres válidos (+ -)"
+                )
 
         # Validar fecha de nacimiento si se proporciona
-        if 'fecha_nacimiento' in datos and datos['fecha_nacimiento']:
+        if "fecha_nacimiento" in datos and datos["fecha_nacimiento"]:
             try:
-                fecha_str = datos['fecha_nacimiento']
+                fecha_str = datos["fecha_nacimiento"]
                 if isinstance(fecha_str, str):
-                    fecha_nac = datetime.strptime(fecha_str, '%Y-%m-%d').date()
+                    fecha_nac = datetime.strptime(fecha_str, "%Y-%m-%d").date()
                     # Verificar que sea una fecha razonable (no futuro y mayor de 12 años)
                     hoy = date.today()
                     if fecha_nac > hoy:
@@ -542,14 +598,16 @@ class EstudianteController:
                 errores.append("Fecha de nacimiento inválida. Formato: YYYY-MM-DD")
 
         # Validar universidad si se proporciona
-        if 'universidad_egreso' in datos and datos['universidad_egreso']:
-            universidad = str(datos['universidad_egreso']).strip()
+        if "universidad_egreso" in datos and datos["universidad_egreso"]:
+            universidad = str(datos["universidad_egreso"]).strip()
             if len(universidad) > 200:
-                errores.append("El nombre de la universidad no puede exceder 200 caracteres")
+                errores.append(
+                    "El nombre de la universidad no puede exceder 200 caracteres"
+                )
 
         # Validar profesión si se proporciona
-        if 'profesion' in datos and datos['profesion']:
-            profesion = str(datos['profesion']).strip()
+        if "profesion" in datos and datos["profesion"]:
+            profesion = str(datos["profesion"]).strip()
             if len(profesion) > 100:
                 errores.append("La profesión no puede exceder 100 caracteres")
 
@@ -595,37 +653,41 @@ class EstudianteController:
                     SELECT COUNT(*) as count FROM estudiantes 
                     WHERE fecha_registro >= ? AND fecha_registro < ?
                 """
-                resultado = EstudianteModel.query(query, [fecha_inicio.isoformat(), fecha_fin.isoformat()])
-                count = resultado[0]['count'] if resultado else 0
+                resultado = EstudianteModel.query(
+                    query, [fecha_inicio.isoformat(), fecha_fin.isoformat()]
+                )
+                count = resultado[0]["count"] if resultado else 0
 
-                mes_nombre = fecha_inicio.strftime('%b %Y')
+                mes_nombre = fecha_inicio.strftime("%b %Y")
                 estudiantes_por_mes[mes_nombre] = count
 
             return {
-                'total_estudiantes': total_estudiantes,
-                'estudiantes_activos': estudiantes_activos,
-                'estudiantes_inactivos': estudiantes_inactivos,
-                'porcentaje_activos': (estudiantes_activos / total_estudiantes * 100) if total_estudiantes > 0 else 0,
-                'estudiantes_por_mes': estudiantes_por_mes,
-                'fecha_consulta': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+                "total_estudiantes": total_estudiantes,
+                "estudiantes_activos": estudiantes_activos,
+                "estudiantes_inactivos": estudiantes_inactivos,
+                "porcentaje_activos": (
+                    (estudiantes_activos / total_estudiantes * 100)
+                    if total_estudiantes > 0
+                    else 0
+                ),
+                "estudiantes_por_mes": estudiantes_por_mes,
+                "fecha_consulta": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
             }
 
         except Exception as e:
             logger.error(f"Error al obtener estadísticas de estudiantes: {e}")
             return {
-                'total_estudiantes': 0,
-                'estudiantes_activos': 0,
-                'estudiantes_inactivos': 0,
-                'porcentaje_activos': 0,
-                'estudiantes_por_mes': {},
-                'fecha_consulta': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
-                'error': str(e)
+                "total_estudiantes": 0,
+                "estudiantes_activos": 0,
+                "estudiantes_inactivos": 0,
+                "porcentaje_activos": 0,
+                "estudiantes_por_mes": {},
+                "fecha_consulta": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                "error": str(e),
             }
 
     def generar_informe_estudiantes(
-        self, 
-        formato: str = 'texto',
-        activos: bool = True
+        self, formato: str = "texto", activos: bool = True
     ) -> str:
         """
         Generar informe de estudiantes
@@ -639,11 +701,10 @@ class EstudianteController:
         """
         try:
             estudiantes = self.obtener_estudiantes(
-                activos=activos,
-                limite=0  # Sin límite
+                activos=activos, limite=0  # Sin límite
             )
 
-            if formato.lower() == 'html':
+            if formato.lower() == "html":
                 return self._generar_informe_html(estudiantes, activos)
             else:
                 return self._generar_informe_texto(estudiantes, activos)
@@ -653,9 +714,7 @@ class EstudianteController:
             return f"Error al generar informe: {str(e)}"
 
     def _generar_informe_texto(
-        self, 
-        estudiantes: List[EstudianteModel],
-        activos: bool
+        self, estudiantes: List[EstudianteModel], activos: bool
     ) -> str:
         """Generar informe en formato texto"""
         titulo = "INFORME DE ESTUDIANTES"
@@ -678,7 +737,9 @@ class EstudianteController:
             if estudiante.fecha_nacimiento:
                 try:
                     if isinstance(estudiante.fecha_nacimiento, str):
-                        fecha_nac = datetime.strptime(estudiante.fecha_nacimiento, '%Y-%m-%d').date()
+                        fecha_nac = datetime.strptime(
+                            estudiante.fecha_nacimiento, "%Y-%m-%d"
+                        ).date()
                     else:
                         fecha_nac = estudiante.fecha_nacimiento
 
@@ -689,9 +750,11 @@ class EstudianteController:
                     edad_info = f" ({edad} años)"
                 except:
                     pass
-                
+
             informe.append(f"{i:3d}. {estudiante.nombre_completo}{edad_info}")
-            informe.append(f"     CI: {estudiante.ci_numero}-{estudiante.ci_expedicion}")
+            informe.append(
+                f"     CI: {estudiante.ci_numero}-{estudiante.ci_expedicion}"
+            )
 
             if estudiante.email:
                 informe.append(f"     Email: {estudiante.email}")
@@ -711,9 +774,7 @@ class EstudianteController:
         return "\n".join(informe)
 
     def _generar_informe_html(
-        self, 
-        estudiantes: List[EstudianteModel],
-        activos: bool
+        self, estudiantes: List[EstudianteModel], activos: bool
     ) -> str:
         """Generar informe en formato HTML"""
         titulo = "Informe de Estudiantes"
@@ -769,7 +830,9 @@ class EstudianteController:
             """
 
             for i, estudiante in enumerate(estudiantes, 1):
-                estado_clase = "estado-activo" if estudiante.activo else "estado-inactivo"
+                estado_clase = (
+                    "estado-activo" if estudiante.activo else "estado-inactivo"
+                )
                 estado_texto = "Activo" if estudiante.activo else "Inactivo"
 
                 html += f"""
@@ -800,9 +863,7 @@ class EstudianteController:
         return html
 
     def exportar_estudiantes_a_csv(
-        self,
-        activos: bool = True,
-        archivo_salida: Optional[str] = None
+        self, activos: bool = True, archivo_salida: Optional[str] = None
     ) -> Tuple[bool, str, Optional[str]]:
         """
         Exportar estudiantes a archivo CSV
@@ -823,27 +884,35 @@ class EstudianteController:
 
             # Generar nombre de archivo si no se proporciona
             if not archivo_salida:
-                timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
                 estado = "activos" if activos else "todos"
                 archivo_salida = f"estudiantes_{estado}_{timestamp}.csv"
 
             # Asegurar extensión .csv
-            if not archivo_salida.lower().endswith('.csv'):
-                archivo_salida += '.csv'
+            if not archivo_salida.lower().endswith(".csv"):
+                archivo_salida += ".csv"
 
             # Crear directorio si no existe
             archivo_path = Path(archivo_salida)
             archivo_path.parent.mkdir(parents=True, exist_ok=True)
 
             # Escribir CSV
-            with open(archivo_path, 'w', encoding='utf-8') as f:
+            with open(archivo_path, "w", encoding="utf-8") as f:
                 # Encabezados
                 encabezados = [
-                    'ID', 'CI', 'Nombres', 'Apellidos', 'Fecha Nacimiento',
-                    'Teléfono', 'Email', 'Universidad Egreso', 'Profesión',
-                    'Fecha Registro', 'Estado'
+                    "ID",
+                    "CI",
+                    "Nombres",
+                    "Apellidos",
+                    "Fecha Nacimiento",
+                    "Teléfono",
+                    "Email",
+                    "Universidad Egreso",
+                    "Profesión",
+                    "Fecha Registro",
+                    "Estado",
                 ]
-                f.write(';'.join(encabezados) + '\n')
+                f.write(";".join(encabezados) + "\n")
 
                 # Datos
                 for estudiante in estudiantes:
@@ -857,7 +926,10 @@ class EstudianteController:
 
                     # Formatear fecha de registro
                     fecha_reg = ""
-                    if hasattr(estudiante, 'fecha_registro') and estudiante.fecha_registro:
+                    if (
+                        hasattr(estudiante, "fecha_registro")
+                        and estudiante.fecha_registro
+                    ):
                         if isinstance(estudiante.fecha_registro, str):
                             fecha_reg = estudiante.fecha_registro
                         else:
@@ -869,14 +941,14 @@ class EstudianteController:
                         estudiante.nombres,
                         estudiante.apellidos,
                         fecha_nac,
-                        estudiante.telefono or '',
-                        estudiante.email or '',
-                        estudiante.universidad_egreso or '',
-                        estudiante.profesion or '',
+                        estudiante.telefono or "",
+                        estudiante.email or "",
+                        estudiante.universidad_egreso or "",
+                        estudiante.profesion or "",
                         fecha_reg,
-                        'Activo' if estudiante.activo else 'Inactivo'
+                        "Activo" if estudiante.activo else "Inactivo",
                     ]
-                    f.write(';'.join(fila) + '\n')
+                    f.write(";".join(fila) + "\n")
 
             mensaje = f"Exportados {len(estudiantes)} estudiantes a {archivo_path}"
             return True, mensaje, str(archivo_path)

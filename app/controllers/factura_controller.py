@@ -9,15 +9,16 @@ from decimal import Decimal
 from typing import Dict, List, Optional, Tuple, Any, Union
 
 from app.models.facturas_model import FacturaModel
-from app.models.usuarios_model import UsuarioModel
+from app.models.usuarios_model import UsuariosModel
 from app.models.movimiento_caja_model import MovimientoCajaModel
-from app.models.facturas_model import FacturaModel
 
 logger = logging.getLogger(__name__)
 
+
 class FacturaController:
     """Controlador para la gestión de facturas"""
-    def __init__(self, db_path: str = None):
+
+    def __init__(self, db_path: str = None):  # type:ignore
         """
         Inicializar controlador de facturas
 
@@ -30,18 +31,20 @@ class FacturaController:
     # ==================== PROPIEDADES ====================
 
     @property
-    def current_usuario(self) -> Optional[UsuarioModel]:
+    def current_usuario(self) -> Optional[UsuariosModel]:
         """Obtener usuario actual"""
         return self._current_usuario
 
     @current_usuario.setter
-    def current_usuario(self, usuario: UsuarioModel):
+    def current_usuario(self, usuario: UsuariosModel):
         """Establecer usuario actual"""
         self._current_usuario = usuario
 
     # ==================== OPERACIONES BÁSICAS ====================
 
-    def crear_factura(self, datos: Dict[str, Any]) -> Tuple[bool, str, Optional[FacturaModel]]:
+    def crear_factura(
+        self, datos: Dict[str, Any]
+    ) -> Tuple[bool, str, Optional[FacturaModel]]:
         """
         Crear una nueva factura
 
@@ -62,39 +65,43 @@ class FacturaController:
                 return False, "Errores de validación: " + "; ".join(errores), None
 
             # Generar número de factura si no se proporciona
-            if 'nro_factura' not in datos or not datos['nro_factura']:
-                prefijo = datos.get('prefijo_factura', 'FAC-')
-                datos['nro_factura'] = FacturaModel.get_ultimo_numero(prefijo)
+            if "nro_factura" not in datos or not datos["nro_factura"]:
+                prefijo = datos.get("prefijo_factura", "FAC-")
+                datos["nro_factura"] = FacturaModel.get_ultimo_numero(prefijo)
 
             # Verificar que el número de factura no exista
-            if 'nro_factura' in datos:
-                factura_existente = FacturaModel.get_by_nro_factura(datos['nro_factura'])
+            if "nro_factura" in datos:
+                factura_existente = FacturaModel.get_by_nro_factura(
+                    datos["nro_factura"]
+                )
                 if factura_existente:
-                    return False, f"El número de factura '{datos['nro_factura']}' ya está en uso", None
+                    return (
+                        False,
+                        f"El número de factura '{datos['nro_factura']}' ya está en uso",
+                        None,
+                    )
 
             # Calcular totales si no se proporcionan
-            if 'subtotal' in datos and datos['subtotal']:
-                subtotal = Decimal(str(datos['subtotal']))
-                aplicar_iva = datos.get('aplicar_iva', True)
-                aplicar_it = datos.get('aplicar_it', False)
+            if "subtotal" in datos and datos["subtotal"]:
+                subtotal = Decimal(str(datos["subtotal"]))
+                aplicar_iva = datos.get("aplicar_iva", True)
+                aplicar_it = datos.get("aplicar_it", False)
 
                 totales = FacturaModel.calcular_totales(
-                    subtotal=subtotal,
-                    aplicar_iva=aplicar_iva,
-                    aplicar_it=aplicar_it
+                    subtotal=subtotal, aplicar_iva=aplicar_iva, aplicar_it=aplicar_it
                 )
 
-                datos['iva'] = float(totales['iva'])
-                datos['it'] = float(totales['it'])
-                datos['total'] = float(totales['total'])
+                datos["iva"] = float(totales["iva"])
+                datos["it"] = float(totales["it"])
+                datos["total"] = float(totales["total"])
 
             # Agregar fecha actual si no se proporciona
-            if 'fecha_emision' not in datos or not datos['fecha_emision']:
-                datos['fecha_emision'] = datetime.now().strftime('%Y-%m-%d')
+            if "fecha_emision" not in datos or not datos["fecha_emision"]:
+                datos["fecha_emision"] = datetime.now().strftime("%Y-%m-%d")
 
             # Agregar estado inicial
-            if 'estado' not in datos:
-                datos['estado'] = FacturaModel.ESTADO_EMITIDA
+            if "estado" not in datos:
+                datos["estado"] = FacturaModel.ESTADO_EMITIDA
 
             # Crear la factura
             factura = FacturaModel(**datos)
@@ -107,7 +114,9 @@ class FacturaController:
                 # Registrar movimiento en caja automáticamente
                 self._registrar_movimiento_caja_factura(factura_creada)
 
-                logger.info(f"✅ Factura creada: {factura.nro_factura} - Cliente: {factura.razon_social}")
+                logger.info(
+                    f"✅ Factura creada: {factura.nro_factura} - Cliente: {factura.razon_social}"
+                )
                 return True, mensaje, factura_creada
             else:
                 return False, "Error al guardar la factura en la base de datos", None
@@ -116,7 +125,9 @@ class FacturaController:
             logger.error(f"Error al crear factura: {e}")
             return False, f"Error interno: {str(e)}", None
 
-    def actualizar_factura(self, factura_id: int, datos: Dict[str, Any]) -> Tuple[bool, str, Optional[FacturaModel]]:
+    def actualizar_factura(
+        self, factura_id: int, datos: Dict[str, Any]
+    ) -> Tuple[bool, str, Optional[FacturaModel]]:
         """
         Actualizar una factura existente
 
@@ -143,18 +154,30 @@ class FacturaController:
 
             # Verificar que no esté exportada al SIAT
             if factura.exportada_siat:
-                return False, "No se puede actualizar una factura exportada al SIAT", None
+                return (
+                    False,
+                    "No se puede actualizar una factura exportada al SIAT",
+                    None,
+                )
 
             # Verificar que no se modifique el número de factura a uno existente
-            if 'nro_factura' in datos and datos['nro_factura'] != factura.nro_factura:
-                factura_existente = FacturaModel.get_by_nro_factura(datos['nro_factura'])
+            if "nro_factura" in datos and datos["nro_factura"] != factura.nro_factura:
+                factura_existente = FacturaModel.get_by_nro_factura(
+                    datos["nro_factura"]
+                )
                 if factura_existente and factura_existente.id != factura_id:
-                    return False, f"El número de factura '{datos['nro_factura']}' ya está en uso", None
+                    return (
+                        False,
+                        f"El número de factura '{datos['nro_factura']}' ya está en uso",
+                        None,
+                    )
 
             # Validar datos
             datos_completos = factura.to_dict()
             datos_completos.update(datos)
-            valido, errores = self._validar_datos_factura(datos_completos, es_actualizacion=True)
+            valido, errores = self._validar_datos_factura(
+                datos_completos, es_actualizacion=True
+            )
             if not valido:
                 return False, "Errores de validación: " + "; ".join(errores), None
 
@@ -176,7 +199,9 @@ class FacturaController:
             logger.error(f"Error al actualizar factura {factura_id}: {e}")
             return False, f"Error interno: {str(e)}", None
 
-    def anular_factura(self, factura_id: int, motivo: Optional[str] = None) -> Tuple[bool, str]:
+    def anular_factura(
+        self, factura_id: int, motivo: Optional[str] = None
+    ) -> Tuple[bool, str]:
         """
         Anular una factura
 
@@ -255,7 +280,7 @@ class FacturaController:
         tipo_documento: Optional[str] = None,
         exportada_siat: Optional[bool] = None,
         limite: int = 100,
-        offset: int = 0
+        offset: int = 0,
     ) -> List[FacturaModel]:
         """
         Obtener todas las facturas con filtros
@@ -318,10 +343,7 @@ class FacturaController:
             return []
 
     def buscar_facturas(
-        self,
-        termino: str,
-        campo: str = 'razon_social',
-        limite: int = 50
+        self, termino: str, campo: str = "razon_social", limite: int = 50
     ) -> List[FacturaModel]:
         """
         Buscar facturas
@@ -335,14 +357,14 @@ class FacturaController:
             Lista de facturas encontradas
         """
         try:
-            if campo == 'razon_social':
+            if campo == "razon_social":
                 return FacturaModel.get_by_cliente(razon_social=termino, limit=limite)
-            elif campo == 'nit_ci':
+            elif campo == "nit_ci":
                 return FacturaModel.get_by_cliente(nit_ci=termino, limit=limite)
-            elif campo == 'nro_factura':
+            elif campo == "nro_factura":
                 factura = FacturaModel.get_by_nro_factura(termino)
                 return [factura] if factura else []
-            elif campo == 'concepto':
+            elif campo == "concepto":
                 query = f"""
                     SELECT * FROM {FacturaModel.TABLE_NAME} 
                     WHERE concepto LIKE ?
@@ -360,7 +382,10 @@ class FacturaController:
                     LIMIT ?
                 """
                 termino_like = f"%{termino}%"
-                results = FacturaModel.query(query, [termino_like, termino_like, termino_like, termino_like, limite])
+                results = FacturaModel.query(
+                    query,
+                    [termino_like, termino_like, termino_like, termino_like, limite],
+                )
                 return [FacturaModel(**row) for row in results] if results else []
 
         except Exception as e:
@@ -368,9 +393,7 @@ class FacturaController:
             return []
 
     def obtener_facturas_por_cliente(
-        self,
-        nit_ci: Optional[str] = None,
-        razon_social: Optional[str] = None
+        self, nit_ci: Optional[str] = None, razon_social: Optional[str] = None
     ) -> List[FacturaModel]:
         """
         Obtener facturas por cliente
@@ -404,7 +427,9 @@ class FacturaController:
 
     # ==================== GESTIÓN DE ESTADO ====================
 
-    def marcar_como_pagada(self, factura_id: int) -> Tuple[bool, str, Optional[FacturaModel]]:
+    def marcar_como_pagada(
+        self, factura_id: int
+    ) -> Tuple[bool, str, Optional[FacturaModel]]:
         """
         Marcar factura como pagada
 
@@ -417,7 +442,11 @@ class FacturaController:
         try:
             # Verificar permisos del usuario
             if not self._tiene_permisos_facturacion():
-                return False, "No tiene permisos para marcar facturas como pagadas", None
+                return (
+                    False,
+                    "No tiene permisos para marcar facturas como pagadas",
+                    None,
+                )
 
             factura = FacturaModel.get_by_id(factura_id)
             if not factura:
@@ -441,7 +470,9 @@ class FacturaController:
             logger.error(f"Error al marcar factura {factura_id} como pagada: {e}")
             return False, f"Error interno: {str(e)}", None
 
-    def marcar_exportada_siat(self, factura_id: int) -> Tuple[bool, str, Optional[FacturaModel]]:
+    def marcar_exportada_siat(
+        self, factura_id: int
+    ) -> Tuple[bool, str, Optional[FacturaModel]]:
         """
         Marcar factura como exportada al SIAT
 
@@ -470,7 +501,9 @@ class FacturaController:
                 return False, mensaje, None
 
         except Exception as e:
-            logger.error(f"Error al marcar factura {factura_id} como exportada al SIAT: {e}")
+            logger.error(
+                f"Error al marcar factura {factura_id} como exportada al SIAT: {e}"
+            )
             return False, f"Error interno: {str(e)}", None
 
     # ==================== CÁLCULOS Y TOTALES ====================
@@ -481,7 +514,7 @@ class FacturaController:
         aplicar_iva: bool = True,
         aplicar_it: bool = False,
         tasa_iva: Optional[Union[float, Decimal]] = None,
-        tasa_it: Optional[Union[float, Decimal]] = None
+        tasa_it: Optional[Union[float, Decimal]] = None,
     ) -> Dict[str, Any]:
         """
         Calcular totales de factura
@@ -515,28 +548,28 @@ class FacturaController:
                 aplicar_iva=aplicar_iva,
                 aplicar_it=aplicar_it,
                 tasa_iva=tasa_iva_dec,
-                tasa_it=tasa_it_dec
+                tasa_it=tasa_it_dec,
             )
 
             return {
-                'subtotal': float(totales['subtotal']),
-                'iva': float(totales['iva']),
-                'it': float(totales['it']),
-                'total': float(totales['total']),
-                'tasa_iva': float(tasa_iva_dec or Decimal('0.13')),
-                'tasa_it': float(tasa_it_dec or Decimal('0.03')),
-                'aplicar_iva': aplicar_iva,
-                'aplicar_it': aplicar_it
+                "subtotal": float(totales["subtotal"]),
+                "iva": float(totales["iva"]),
+                "it": float(totales["it"]),
+                "total": float(totales["total"]),
+                "tasa_iva": float(tasa_iva_dec or Decimal("0.13")),
+                "tasa_it": float(tasa_it_dec or Decimal("0.03")),
+                "aplicar_iva": aplicar_iva,
+                "aplicar_it": aplicar_it,
             }
 
         except Exception as e:
             logger.error(f"Error al calcular totales: {e}")
             return {
-                'error': str(e),
-                'subtotal': 0.0,
-                'iva': 0.0,
-                'it': 0.0,
-                'total': 0.0
+                "error": str(e),
+                "subtotal": 0.0,
+                "iva": 0.0,
+                "it": 0.0,
+                "total": 0.0,
             }
 
     def simular_factura(
@@ -544,7 +577,7 @@ class FacturaController:
         subtotal: float,
         tipo_documento: str = FacturaModel.TIPO_CONSUMIDOR_FINAL,
         aplicar_iva: bool = True,
-        aplicar_it: bool = False
+        aplicar_it: bool = False,
     ) -> Dict[str, Any]:
         """
         Simular una factura con diferentes escenarios
@@ -567,73 +600,87 @@ class FacturaController:
 
             # Escenario 1: Solo IVA (13%)
             if aplicar_iva and not aplicar_it:
-                escenarios.append({
-                    'nombre': 'Con IVA (13%)',
-                    'descripcion': 'Aplicación de Impuesto al Valor Agregado',
-                    'subtotal': totales_base['subtotal'],
-                    'iva': totales_base['iva'],
-                    'it': 0.0,
-                    'total': totales_base['subtotal'] + totales_base['iva']
-                })
+                escenarios.append(
+                    {
+                        "nombre": "Con IVA (13%)",
+                        "descripcion": "Aplicación de Impuesto al Valor Agregado",
+                        "subtotal": totales_base["subtotal"],
+                        "iva": totales_base["iva"],
+                        "it": 0.0,
+                        "total": totales_base["subtotal"] + totales_base["iva"],
+                    }
+                )
 
             # Escenario 2: Solo IT (3%)
             if aplicar_it and not aplicar_iva:
-                escenarios.append({
-                    'nombre': 'Con IT (3%)',
-                    'descripcion': 'Aplicación de Impuesto a las Transacciones',
-                    'subtotal': totales_base['subtotal'],
-                    'iva': 0.0,
-                    'it': totales_base['it'],
-                    'total': totales_base['subtotal'] + totales_base['it']
-                })
+                escenarios.append(
+                    {
+                        "nombre": "Con IT (3%)",
+                        "descripcion": "Aplicación de Impuesto a las Transacciones",
+                        "subtotal": totales_base["subtotal"],
+                        "iva": 0.0,
+                        "it": totales_base["it"],
+                        "total": totales_base["subtotal"] + totales_base["it"],
+                    }
+                )
 
             # Escenario 3: IVA + IT
             if aplicar_iva and aplicar_it:
-                escenarios.append({
-                    'nombre': 'Con IVA (13%) e IT (3%)',
-                    'descripcion': 'Aplicación de ambos impuestos',
-                    'subtotal': totales_base['subtotal'],
-                    'iva': totales_base['iva'],
-                    'it': totales_base['it'],
-                    'total': totales_base['total']
-                })
+                escenarios.append(
+                    {
+                        "nombre": "Con IVA (13%) e IT (3%)",
+                        "descripcion": "Aplicación de ambos impuestos",
+                        "subtotal": totales_base["subtotal"],
+                        "iva": totales_base["iva"],
+                        "it": totales_base["it"],
+                        "total": totales_base["total"],
+                    }
+                )
 
             # Escenario 4: Sin impuestos
-            escenarios.append({
-                'nombre': 'Sin impuestos',
-                'descripcion': 'Exento de impuestos',
-                'subtotal': subtotal,
-                'iva': 0.0,
-                'it': 0.0,
-                'total': subtotal
-            })
+            escenarios.append(
+                {
+                    "nombre": "Sin impuestos",
+                    "descripcion": "Exento de impuestos",
+                    "subtotal": subtotal,
+                    "iva": 0.0,
+                    "it": 0.0,
+                    "total": subtotal,
+                }
+            )
 
             # Calcular próximos números de factura
             prefijos = {
-                FacturaModel.TIPO_NIT: 'FAC-NIT-',
-                FacturaModel.TIPO_CI: 'FAC-CI-',
-                FacturaModel.TIPO_CONSUMIDOR_FINAL: 'FAC-CF-'
+                FacturaModel.TIPO_NIT: "FAC-NIT-",
+                FacturaModel.TIPO_CI: "FAC-CI-",
+                FacturaModel.TIPO_CONSUMIDOR_FINAL: "FAC-CF-",
             }
 
-            prefijo = prefijos.get(tipo_documento, 'FAC-')
+            prefijo = prefijos.get(tipo_documento, "FAC-")
             siguiente_numero = FacturaModel.get_ultimo_numero(prefijo)
 
             return {
-                'simulacion': True,
-                'fecha_simulacion': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
-                'subtotal_base': subtotal,
-                'tipo_documento': tipo_documento,
-                'tipo_documento_descripcion': FacturaModel.TIPOS_DOCUMENTO_DESC.get(tipo_documento, tipo_documento),
-                'siguiente_numero': siguiente_numero,
-                'escenarios': escenarios,
-                'recomendacion': self._obtener_recomendacion_impuestos(tipo_documento, subtotal)
+                "simulacion": True,
+                "fecha_simulacion": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                "subtotal_base": subtotal,
+                "tipo_documento": tipo_documento,
+                "tipo_documento_descripcion": FacturaModel.TIPOS_DOCUMENTO_DESC.get(
+                    tipo_documento, tipo_documento
+                ),
+                "siguiente_numero": siguiente_numero,
+                "escenarios": escenarios,
+                "recomendacion": self._obtener_recomendacion_impuestos(
+                    tipo_documento, subtotal
+                ),
             }
 
         except Exception as e:
             logger.error(f"Error al simular factura: {e}")
-            return {'error': str(e)}
+            return {"error": str(e)}
 
-    def _obtener_recomendacion_impuestos(self, tipo_documento: str, subtotal: float) -> Dict[str, Any]:
+    def _obtener_recomendacion_impuestos(
+        self, tipo_documento: str, subtotal: float
+    ) -> Dict[str, Any]:
         """
         Obtener recomendación de impuestos según tipo de documento y monto
 
@@ -648,38 +695,38 @@ class FacturaController:
             # Para NIT: aplicar IVA e IT según monto
             if subtotal < 1000:  # Monto pequeño
                 return {
-                    'aplicar_iva': True,
-                    'aplicar_it': False,
-                    'razon': 'Para montos menores a Bs. 1,000 se recomienda solo IVA'
+                    "aplicar_iva": True,
+                    "aplicar_it": False,
+                    "razon": "Para montos menores a Bs. 1,000 se recomienda solo IVA",
                 }
             else:
                 return {
-                    'aplicar_iva': True,
-                    'aplicar_it': True,
-                    'razon': 'Para montos mayores a Bs. 1,000 se recomienda aplicar ambos impuestos'
+                    "aplicar_iva": True,
+                    "aplicar_it": True,
+                    "razon": "Para montos mayores a Bs. 1,000 se recomienda aplicar ambos impuestos",
                 }
 
         elif tipo_documento == FacturaModel.TIPO_CI:
             # Para CI: solo IVA generalmente
             return {
-                'aplicar_iva': True,
-                'aplicar_it': False,
-                'razon': 'Para facturas a personas naturales se aplica solo IVA'
+                "aplicar_iva": True,
+                "aplicar_it": False,
+                "razon": "Para facturas a personas naturales se aplica solo IVA",
             }
 
         else:  # CONSUMIDOR_FINAL
             # Para consumidor final: sin impuestos o solo IVA según monto
             if subtotal < 500:
                 return {
-                    'aplicar_iva': False,
-                    'aplicar_it': False,
-                    'razon': 'Para consumidor final con montos pequeños, puede ser exento'
+                    "aplicar_iva": False,
+                    "aplicar_it": False,
+                    "razon": "Para consumidor final con montos pequeños, puede ser exento",
                 }
             else:
                 return {
-                    'aplicar_iva': True,
-                    'aplicar_it': False,
-                    'razon': 'Para montos mayores a Bs. 500, aplicar IVA'
+                    "aplicar_iva": True,
+                    "aplicar_it": False,
+                    "razon": "Para montos mayores a Bs. 500, aplicar IVA",
                 }
 
     # ==================== ESTADÍSTICAS E INFORMES ====================
@@ -687,7 +734,7 @@ class FacturaController:
     def obtener_estadisticas(
         self,
         fecha_inicio: Optional[Union[str, date]] = None,
-        fecha_fin: Optional[Union[str, date]] = None
+        fecha_fin: Optional[Union[str, date]] = None,
     ) -> Dict[str, Any]:
         """
         Obtener estadísticas de facturas
@@ -704,20 +751,26 @@ class FacturaController:
             if not fecha_inicio or not fecha_fin:
                 hoy = date.today()
                 primer_dia = date(hoy.year, hoy.month, 1)
-                ultimo_dia = date(hoy.year, hoy.month + 1, 1) - timedelta(days=1) if hoy.month < 12 else date(hoy.year + 1, 1, 1) - timedelta(days=1)
+                ultimo_dia = (
+                    date(hoy.year, hoy.month + 1, 1) - timedelta(days=1)
+                    if hoy.month < 12
+                    else date(hoy.year + 1, 1, 1) - timedelta(days=1)
+                )
 
                 fecha_inicio = primer_dia.isoformat()
                 fecha_fin = ultimo_dia.isoformat()
 
             # Obtener facturas en el rango
-            facturas = self.obtener_todas(fecha_inicio=fecha_inicio, fecha_fin=fecha_fin, limite=1000)
+            facturas = self.obtener_todas(
+                fecha_inicio=fecha_inicio, fecha_fin=fecha_fin, limite=1000
+            )
 
             # Calcular totales
             total_facturas = len(facturas)
-            total_subtotal = Decimal('0')
-            total_iva = Decimal('0')
-            total_it = Decimal('0')
-            total_general = Decimal('0')
+            total_subtotal = Decimal("0")
+            total_iva = Decimal("0")
+            total_it = Decimal("0")
+            total_general = Decimal("0")
 
             # Por estado
             por_estado = {}
@@ -734,32 +787,35 @@ class FacturaController:
                 # Por estado
                 estado = factura.estado
                 if estado not in por_estado:
-                    por_estado[estado] = {'cantidad': 0, 'monto': Decimal('0')}
-                por_estado[estado]['cantidad'] += 1
-                por_estado[estado]['monto'] += factura.total
+                    por_estado[estado] = {"cantidad": 0, "monto": Decimal("0")}
+                por_estado[estado]["cantidad"] += 1
+                por_estado[estado]["monto"] += factura.total
 
                 # Por tipo de documento
                 tipo_doc = factura.tipo_documento
                 if tipo_doc not in por_tipo_documento:
-                    por_tipo_documento[tipo_doc] = {'cantidad': 0, 'monto': Decimal('0')}
-                por_tipo_documento[tipo_doc]['cantidad'] += 1
-                por_tipo_documento[tipo_doc]['monto'] += factura.total
+                    por_tipo_documento[tipo_doc] = {
+                        "cantidad": 0,
+                        "monto": Decimal("0"),
+                    }
+                por_tipo_documento[tipo_doc]["cantidad"] += 1
+                por_tipo_documento[tipo_doc]["monto"] += factura.total
 
                 # Por día
-                if hasattr(factura.fecha_emision, 'day'):
+                if hasattr(factura.fecha_emision, "day"):
                     dia = factura.fecha_emision.day
                 elif isinstance(factura.fecha_emision, str):
                     try:
-                        dia = datetime.strptime(factura.fecha_emision, '%Y-%m-%d').day
+                        dia = datetime.strptime(factura.fecha_emision, "%Y-%m-%d").day
                     except:
                         dia = 1
                 else:
                     dia = 1
 
                 if dia not in por_dia:
-                    por_dia[dia] = {'cantidad': 0, 'monto': Decimal('0')}
-                por_dia[dia]['cantidad'] += 1
-                por_dia[dia]['monto'] += factura.total
+                    por_dia[dia] = {"cantidad": 0, "monto": Decimal("0")}
+                por_dia[dia]["cantidad"] += 1
+                por_dia[dia]["monto"] += factura.total
 
             # Estadísticas de exportación SIAT
             exportadas_siat = len([f for f in facturas if f.exportada_siat])
@@ -768,37 +824,50 @@ class FacturaController:
             factura_mayor = max(facturas, key=lambda f: f.total) if facturas else None
 
             return {
-                'periodo': {
-                    'fecha_inicio': fecha_inicio,
-                    'fecha_fin': fecha_fin
+                "periodo": {"fecha_inicio": fecha_inicio, "fecha_fin": fecha_fin},
+                "totales": {
+                    "facturas": total_facturas,
+                    "subtotal": float(total_subtotal),
+                    "iva": float(total_iva),
+                    "it": float(total_it),
+                    "total": float(total_general),
+                    "promedio_factura": (
+                        float(total_general / total_facturas)
+                        if total_facturas > 0
+                        else 0
+                    ),
                 },
-                'totales': {
-                    'facturas': total_facturas,
-                    'subtotal': float(total_subtotal),
-                    'iva': float(total_iva),
-                    'it': float(total_it),
-                    'total': float(total_general),
-                    'promedio_factura': float(total_general / total_facturas) if total_facturas > 0 else 0
+                "por_estado": por_estado,
+                "por_tipo_documento": por_tipo_documento,
+                "por_dia": por_dia,
+                "exportacion_siat": {
+                    "exportadas": exportadas_siat,
+                    "no_exportadas": total_facturas - exportadas_siat,
+                    "porcentaje_exportadas": (
+                        (exportadas_siat / total_facturas * 100)
+                        if total_facturas > 0
+                        else 0
+                    ),
                 },
-                'por_estado': por_estado,
-                'por_tipo_documento': por_tipo_documento,
-                'por_dia': por_dia,
-                'exportacion_siat': {
-                    'exportadas': exportadas_siat,
-                    'no_exportadas': total_facturas - exportadas_siat,
-                    'porcentaje_exportadas': (exportadas_siat / total_facturas * 100) if total_facturas > 0 else 0
-                },
-                'factura_mayor': {
-                    'nro_factura': factura_mayor.nro_factura if factura_mayor else None,
-                    'cliente': factura_mayor.razon_social if factura_mayor else None,
-                    'monto': float(factura_mayor.total) if factura_mayor else 0
-                } if factura_mayor else None,
-                'fecha_consulta': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+                "factura_mayor": (
+                    {
+                        "nro_factura": (
+                            factura_mayor.nro_factura if factura_mayor else None
+                        ),
+                        "cliente": (
+                            factura_mayor.razon_social if factura_mayor else None
+                        ),
+                        "monto": float(factura_mayor.total) if factura_mayor else 0,
+                    }
+                    if factura_mayor
+                    else None
+                ),
+                "fecha_consulta": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
             }
 
         except Exception as e:
             logger.error(f"Error al obtener estadísticas de facturas: {e}")
-            return {'error': str(e)}
+            return {"error": str(e)}
 
     def obtener_resumen_factura(self, factura_id: int) -> Dict[str, Any]:
         """
@@ -813,13 +882,14 @@ class FacturaController:
         try:
             factura = FacturaModel.get_by_id(factura_id)
             if not factura:
-                return {'error': f'Factura {factura_id} no encontrada'}
+                return {"error": f"Factura {factura_id} no encontrada"}
 
             # Obtener detalles si existen
             detalles = []
             try:
                 # Buscar detalles de la factura
                 from database import Database
+
                 db = Database()
                 query = f"SELECT * FROM detalles_factura WHERE factura_id = ?"
                 results = db.fetch_all(query, [factura_id])
@@ -827,22 +897,24 @@ class FacturaController:
                     detalles = results
             except:
                 pass
-            
+
             # Obtener movimiento de caja asociado
             movimiento = self._obtener_movimiento_caja_factura(factura_id)
 
             return {
-                'factura': factura.to_dict(),
-                'detalles': detalles,
-                'movimiento_caja': movimiento.to_dict() if movimiento else None,
-                'total_detallado': sum(d['subtotal'] for d in detalles) if detalles else 0,
-                'codigo_qr': self._generar_codigo_qr_factura(factura),
-                'leyenda_siat': self._obtener_leyenda_siat(factura)
+                "factura": factura.to_dict(),
+                "detalles": detalles,
+                "movimiento_caja": movimiento.to_dict() if movimiento else None,
+                "total_detallado": (
+                    sum(d["subtotal"] for d in detalles) if detalles else 0
+                ),
+                "codigo_qr": self._generar_codigo_qr_factura(factura),
+                "leyenda_siat": self._obtener_leyenda_siat(factura),
             }
 
         except Exception as e:
             logger.error(f"Error al obtener resumen de factura {factura_id}: {e}")
-            return {'error': str(e)}
+            return {"error": str(e)}
 
     def _generar_codigo_qr_factura(self, factura: FacturaModel) -> str:
         """
@@ -857,21 +929,29 @@ class FacturaController:
         try:
             # Datos para QR según formato SIAT
             datos = {
-                'nit_emisor': '1234567890',  # NIT del emisor (configurable)
-                'nro_factura': factura.nro_factura,
-                'nro_autorizacion': '1234567890',  # Número de autorización (configurable)
-                'fecha_emision': factura.fecha_emision,
-                'nit_cliente': factura.nit_ci if factura.tipo_documento == FacturaModel.TIPO_NIT else '',
-                'importe_total': float(factura.total),
-                'codigo_control': factura.codigo_control,
-                'fecha_limite': (datetime.now() + timedelta(days=30)).strftime('%Y-%m-%d')
+                "nit_emisor": "1234567890",  # NIT del emisor (configurable)
+                "nro_factura": factura.nro_factura,
+                "nro_autorizacion": "1234567890",  # Número de autorización (configurable)
+                "fecha_emision": factura.fecha_emision,
+                "nit_cliente": (
+                    factura.nit_ci
+                    if factura.tipo_documento == FacturaModel.TIPO_NIT
+                    else ""
+                ),
+                "importe_total": float(factura.total),
+                "codigo_control": factura.codigo_control,
+                "fecha_limite": (datetime.now() + timedelta(days=30)).strftime(
+                    "%Y-%m-%d"
+                ),
             }
 
             # Formatear como cadena
             return f"NIT:{datos['nit_emisor']}|NRO:{datos['nro_factura']}|AUT:{datos['nro_autorizacion']}|FEC:{datos['fecha_emision']}|NITC:{datos['nit_cliente']}|IMP:{datos['importe_total']}|COD:{datos['codigo_control']}|FECL:{datos['fecha_limite']}"
 
         except Exception as e:
-            logger.error(f"Error al generar código QR para factura {factura.nro_factura}: {e}")
+            logger.error(
+                f"Error al generar código QR para factura {factura.nro_factura}: {e}"
+            )
             return ""
 
     def _obtener_leyenda_siat(self, factura: FacturaModel) -> List[str]:
@@ -887,21 +967,25 @@ class FacturaController:
         leyendas = []
 
         # Leyendas generales
-        leyendas.append("Ley N° 453: Tienes derecho a recibir información sobre las características y contenidos de los servicios que utilices")
-        leyendas.append("Ley N° 453: Puedes acceder a los libros de reclamaciones en forma gratuita en los locales de atención al público")
+        leyendas.append(
+            "Ley N° 453: Tienes derecho a recibir información sobre las características y contenidos de los servicios que utilices"
+        )
+        leyendas.append(
+            "Ley N° 453: Puedes acceder a los libros de reclamaciones en forma gratuita en los locales de atención al público"
+        )
 
         # Leyendas según tipo de documento
         if factura.tipo_documento == FacturaModel.TIPO_CONSUMIDOR_FINAL:
-            leyendas.append("Código de Consumidor: El proveedor debe garantizar el derecho a la seguridad e indemnidad")
-            leyendas.append("Código de Consumidor: El proveedor debe ofrecer servicios de calidad")
+            leyendas.append(
+                "Código de Consumidor: El proveedor debe garantizar el derecho a la seguridad e indemnidad"
+            )
+            leyendas.append(
+                "Código de Consumidor: El proveedor debe ofrecer servicios de calidad"
+            )
 
         return leyendas
 
-    def generar_reporte_factura(
-        self,
-        factura_id: int,
-        formato: str = 'texto'
-    ) -> str:
+    def generar_reporte_factura(self, factura_id: int, formato: str = "texto") -> str:
         """
         Generar reporte de factura
 
@@ -920,7 +1004,7 @@ class FacturaController:
             # Obtener resumen
             resumen = self.obtener_resumen_factura(factura_id)
 
-            if formato.lower() == 'html':
+            if formato.lower() == "html":
                 return self._generar_reporte_html(factura, resumen)
             else:
                 return self._generar_reporte_texto(factura, resumen)
@@ -930,9 +1014,7 @@ class FacturaController:
             return f"Error al generar reporte: {str(e)}"
 
     def _generar_reporte_texto(
-        self,
-        factura: FacturaModel,
-        resumen: Dict[str, Any]
+        self, factura: FacturaModel, resumen: Dict[str, Any]
     ) -> str:
         """Generar reporte en formato texto"""
         reporte = []
@@ -942,7 +1024,9 @@ class FacturaController:
         reporte.append(f"Factura N°: {factura.nro_factura}")
         reporte.append(f"Fecha Emisión: {factura.fecha_emision_formateada}")
         reporte.append(f"Generado: {datetime.now().strftime('%d/%m/%Y %H:%M')}")
-        reporte.append(f"Generado por: {self._current_usuario.nombre if self._current_usuario else 'Sistema'}")
+        reporte.append(
+            f"Generado por: {self._current_usuario.nombre if self._current_usuario else 'Sistema'}"
+        )
         reporte.append("-" * 80)
 
         # Información del cliente
@@ -975,12 +1059,16 @@ class FacturaController:
             reporte.append(f"  Concepto: {factura.concepto}")
 
         # Detalles
-        if 'detalles' in resumen and resumen['detalles']:
+        if "detalles" in resumen and resumen["detalles"]:
             reporte.append("-" * 80)
             reporte.append("DETALLES DE LA FACTURA:")
-            for i, detalle in enumerate(resumen['detalles'], 1):
-                reporte.append(f"  {i}. {detalle.get('descripcion', 'Sin descripción')}")
-                reporte.append(f"     Cantidad: {detalle.get('cantidad', 1)} x Bs. {detalle.get('precio_unitario', 0):,.2f}")
+            for i, detalle in enumerate(resumen["detalles"], 1):
+                reporte.append(
+                    f"  {i}. {detalle.get('descripcion', 'Sin descripción')}"
+                )
+                reporte.append(
+                    f"     Cantidad: {detalle.get('cantidad', 1)} x Bs. {detalle.get('precio_unitario', 0):,.2f}"
+                )
                 reporte.append(f"     Subtotal: Bs. {detalle.get('subtotal', 0):,.2f}")
 
         reporte.append("=" * 80)
@@ -988,9 +1076,7 @@ class FacturaController:
         return "\n".join(reporte)
 
     def _generar_reporte_html(
-        self,
-        factura: FacturaModel,
-        resumen: Dict[str, Any]
+        self, factura: FacturaModel, resumen: Dict[str, Any]
     ) -> str:
         """Generar reporte en formato HTML"""
         html = f"""
@@ -1085,7 +1171,7 @@ class FacturaController:
         """
 
         # Detalles si existen
-        if 'detalles' in resumen and resumen['detalles']:
+        if "detalles" in resumen and resumen["detalles"]:
             html += f"""
             <div class="section">
                 <h2>Detalles de la Factura</h2>
@@ -1102,7 +1188,7 @@ class FacturaController:
                     <tbody>
             """
 
-            for i, detalle in enumerate(resumen['detalles'], 1):
+            for i, detalle in enumerate(resumen["detalles"], 1):
                 html += f"""
                     <tr>
                         <td>{i}</td>
@@ -1147,9 +1233,7 @@ class FacturaController:
     # ==================== MÉTODOS AUXILIARES ====================
 
     def _validar_datos_factura(
-        self, 
-        datos: Dict[str, Any], 
-        es_actualizacion: bool = False
+        self, datos: Dict[str, Any], es_actualizacion: bool = False
     ) -> Tuple[bool, List[str]]:
         """
         Validar datos de factura
@@ -1164,25 +1248,27 @@ class FacturaController:
         errores = []
 
         # Validar campos requeridos
-        campos_requeridos = ['razon_social']
+        campos_requeridos = ["razon_social"]
         for campo in campos_requeridos:
-            if campo not in datos or not str(datos.get(campo, '')).strip():
+            if campo not in datos or not str(datos.get(campo, "")).strip():
                 errores.append(f"El campo '{campo}' es requerido")
 
         # Validar número de factura
-        if 'nro_factura' in datos and datos['nro_factura']:
-            valido, mensaje = FacturaModel.validate_nro_factura(datos['nro_factura'])
+        if "nro_factura" in datos and datos["nro_factura"]:
+            valido, mensaje = FacturaModel.validate_nro_factura(datos["nro_factura"])
             if not valido:
                 errores.append(f"Número de factura: {mensaje}")
 
         # Validar tipo de documento
-        if 'tipo_documento' in datos and datos['tipo_documento']:
-            if datos['tipo_documento'] not in FacturaModel.TIPOS_DOCUMENTO:
-                errores.append(f"Tipo de documento inválido. Válidos: {', '.join(FacturaModel.TIPOS_DOCUMENTO)}")
+        if "tipo_documento" in datos and datos["tipo_documento"]:
+            if datos["tipo_documento"] not in FacturaModel.TIPOS_DOCUMENTO:
+                errores.append(
+                    f"Tipo de documento inválido. Válidos: {', '.join(FacturaModel.TIPOS_DOCUMENTO)}"
+                )
 
         # Validar NIT/CI según tipo de documento
-        tipo_doc = datos.get('tipo_documento', FacturaModel.TIPO_CONSUMIDOR_FINAL)
-        nit_ci = datos.get('nit_ci')
+        tipo_doc = datos.get("tipo_documento", FacturaModel.TIPO_CONSUMIDOR_FINAL)
+        nit_ci = datos.get("nit_ci")
 
         if tipo_doc == FacturaModel.TIPO_NIT:
             if not nit_ci:
@@ -1201,13 +1287,13 @@ class FacturaController:
                     errores.append(f"CI: {mensaje}")
 
         # Validar razón social
-        if 'razon_social' in datos and datos['razon_social']:
-            valido, mensaje = FacturaModel.validate_razon_social(datos['razon_social'])
+        if "razon_social" in datos and datos["razon_social"]:
+            valido, mensaje = FacturaModel.validate_razon_social(datos["razon_social"])
             if not valido:
                 errores.append(f"Razón social: {mensaje}")
 
         # Validar montos
-        for campo_monto in ['subtotal', 'iva', 'it', 'total']:
+        for campo_monto in ["subtotal", "iva", "it", "total"]:
             if campo_monto in datos and datos[campo_monto] is not None:
                 try:
                     monto = float(datos[campo_monto])
@@ -1216,21 +1302,25 @@ class FacturaController:
                     if monto > 1000000:  # Límite razonable
                         errores.append(f"El {campo_monto} no puede exceder 1,000,000")
                 except (ValueError, TypeError):
-                    errores.append(f"{campo_monto.capitalize()} inválido. Debe ser un número")
+                    errores.append(
+                        f"{campo_monto.capitalize()} inválido. Debe ser un número"
+                    )
 
         # Validar fecha de emisión
-        if 'fecha_emision' in datos and datos['fecha_emision']:
+        if "fecha_emision" in datos and datos["fecha_emision"]:
             try:
-                fecha = datetime.strptime(datos['fecha_emision'], '%Y-%m-%d').date()
+                fecha = datetime.strptime(datos["fecha_emision"], "%Y-%m-%d").date()
                 if fecha > date.today():
                     errores.append("La fecha de emisión no puede ser futura")
             except ValueError:
                 errores.append("Fecha de emisión inválida. Formato debe ser YYYY-MM-DD")
 
         # Validar estado
-        if 'estado' in datos and datos['estado']:
-            if datos['estado'] not in FacturaModel.ESTADOS:
-                errores.append(f"Estado inválido. Válidos: {', '.join(FacturaModel.ESTADOS)}")
+        if "estado" in datos and datos["estado"]:
+            if datos["estado"] not in FacturaModel.ESTADOS:
+                errores.append(
+                    f"Estado inválido. Válidos: {', '.join(FacturaModel.ESTADOS)}"
+                )
 
         return len(errores) == 0, errores
 
@@ -1246,25 +1336,37 @@ class FacturaController:
         """
         try:
             # Solo registrar si la factura está pagada o emitida
-            if factura.estado not in [FacturaModel.ESTADO_PAGADA, FacturaModel.ESTADO_EMITIDA]:
+            if factura.estado not in [
+                FacturaModel.ESTADO_PAGADA,
+                FacturaModel.ESTADO_EMITIDA,
+            ]:
                 return False
 
             # Verificar si ya existe movimiento
             from .movimiento_caja_controller import MovimientoCajaController
+
             caja_controller = MovimientoCajaController()
             caja_controller.current_usuario = self._current_usuario
 
-            exito, mensaje, movimiento = caja_controller.registrar_ingreso_factura(factura.id)
+            exito, mensaje, movimiento = caja_controller.registrar_ingreso_factura(
+                factura.id
+            )
 
             if exito:
-                logger.info(f"Movimiento de caja registrado para factura {factura.nro_factura}")
+                logger.info(
+                    f"Movimiento de caja registrado para factura {factura.nro_factura}"
+                )
                 return True
             else:
-                logger.error(f"Error al registrar movimiento de caja para factura {factura.nro_factura}: {mensaje}")
+                logger.error(
+                    f"Error al registrar movimiento de caja para factura {factura.nro_factura}: {mensaje}"
+                )
                 return False
 
         except Exception as e:
-            logger.error(f"Error al registrar movimiento de caja para factura {factura.id}: {e}")
+            logger.error(
+                f"Error al registrar movimiento de caja para factura {factura.id}: {e}"
+            )
             return False
 
     def _registrar_movimiento_reversion_factura(self, factura: FacturaModel) -> bool:
@@ -1284,16 +1386,21 @@ class FacturaController:
                 return False
 
             from .movimiento_caja_controller import MovimientoCajaController
+
             caja_controller = MovimientoCajaController()
             caja_controller.current_usuario = self._current_usuario
 
             exito, mensaje = caja_controller.anular_movimiento(movimiento.id)
 
             if exito:
-                logger.info(f"Movimiento de caja revertido para factura anulada {factura.nro_factura}")
+                logger.info(
+                    f"Movimiento de caja revertido para factura anulada {factura.nro_factura}"
+                )
                 return True
             else:
-                logger.error(f"Error al revertir movimiento de caja para factura {factura.nro_factura}: {mensaje}")
+                logger.error(
+                    f"Error al revertir movimiento de caja para factura {factura.nro_factura}: {mensaje}"
+                )
                 return False
 
         except Exception as e:
@@ -1312,16 +1419,23 @@ class FacturaController:
         """
         try:
             from .movimiento_caja_controller import MovimientoCajaController
+
             caja_controller = MovimientoCajaController()
 
-            movimientos = caja_controller.obtener_movimientos_por_referencia('FACTURA', factura_id)
+            movimientos = caja_controller.obtener_movimientos_por_referencia(
+                "FACTURA", factura_id
+            )
             return len(movimientos) > 0
 
         except Exception as e:
-            logger.error(f"Error al verificar movimiento de caja para factura {factura_id}: {e}")
+            logger.error(
+                f"Error al verificar movimiento de caja para factura {factura_id}: {e}"
+            )
             return False
 
-    def _obtener_movimiento_caja_factura(self, factura_id: int) -> Optional[MovimientoCajaModel]:
+    def _obtener_movimiento_caja_factura(
+        self, factura_id: int
+    ) -> Optional[MovimientoCajaModel]:
         """
         Obtener movimiento de caja asociado a una factura
 
@@ -1333,13 +1447,18 @@ class FacturaController:
         """
         try:
             from .movimiento_caja_controller import MovimientoCajaController
+
             caja_controller = MovimientoCajaController()
 
-            movimientos = caja_controller.obtener_movimientos_por_referencia('FACTURA', factura_id)
+            movimientos = caja_controller.obtener_movimientos_por_referencia(
+                "FACTURA", factura_id
+            )
             return movimientos[0] if movimientos else None
 
         except Exception as e:
-            logger.error(f"Error al obtener movimiento de caja para factura {factura_id}: {e}")
+            logger.error(
+                f"Error al obtener movimiento de caja para factura {factura_id}: {e}"
+            )
             return None
 
     def _tiene_permisos_facturacion(self) -> bool:
@@ -1347,7 +1466,7 @@ class FacturaController:
         if not self._current_usuario:
             return False
 
-        roles_permitidos = ['ADMIN', 'CONTADOR', 'FACTURADOR']
+        roles_permitidos = ["ADMIN", "CONTADOR", "FACTURADOR"]
         return self._current_usuario.rol in roles_permitidos
 
     def _tiene_permisos_siat(self) -> bool:
@@ -1356,7 +1475,7 @@ class FacturaController:
             return False
 
         # Solo administradores y contadores pueden exportar al SIAT
-        roles_permitidos = ['ADMIN', 'CONTADOR']
+        roles_permitidos = ["ADMIN", "CONTADOR"]
         return self._current_usuario.rol in roles_permitidos
 
     # ==================== MÉTODOS DE UTILIDAD ====================
@@ -1365,7 +1484,7 @@ class FacturaController:
         self,
         fecha_inicio: Union[str, date],
         fecha_fin: Union[str, date],
-        ruta_archivo: str
+        ruta_archivo: str,
     ) -> Tuple[bool, str]:
         """
         Exportar facturas a archivo CSV
@@ -1382,7 +1501,9 @@ class FacturaController:
             import csv
 
             # Obtener facturas
-            facturas = self.obtener_todas(fecha_inicio=fecha_inicio, fecha_fin=fecha_fin, limite=1000)
+            facturas = self.obtener_todas(
+                fecha_inicio=fecha_inicio, fecha_fin=fecha_fin, limite=1000
+            )
 
             # Preparar datos
             datos = []
@@ -1391,7 +1512,7 @@ class FacturaController:
                 datos.append(fila)
 
             # Escribir archivo CSV
-            with open(ruta_archivo, 'w', newline='', encoding='utf-8') as csvfile:
+            with open(ruta_archivo, "w", newline="", encoding="utf-8") as csvfile:
                 if datos:
                     fieldnames = datos[0].keys()
                     writer = csv.DictWriter(csvfile, fieldnames=fieldnames)

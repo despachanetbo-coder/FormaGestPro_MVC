@@ -269,45 +269,23 @@ class EstudianteModel(BaseModel):
 
     # ============ MÉTODOS DE CONSULTA AVANZADOS ============
 
-    def get_all(
-        self,
-        active_only: bool = True,
-        limit: int = 100,
-        offset: int = 0,
-        order_by: str = "id",
-        order_desc: bool = True,
-    ) -> List[Dict[str, Any]]:
+    def get_all(self, active_only=True, limit=100, offset=0):
         """
         Obtiene todos los estudiantes con paginación
-
-        Args:
-            active_only: Si es True, solo estudiantes activos
-            limit: Límite de registros
-            offset: Desplazamiento para paginación
-            order_by: Campo para ordenar
-            order_desc: Si es True, orden descendente
-
-        Returns:
-            List[Dict]: Lista de estudiantes
+        FIX: Ahora es método de instancia (tiene self)
         """
         try:
-            query = f"SELECT * FROM {self.table_name}"
+            query = "SELECT * FROM estudiantes"
             params = []
 
             # Filtrar por estado activo
             if active_only:
                 query += " WHERE activo = TRUE"
 
-            # Ordenar
-            order_dir = "DESC" if order_desc else "ASC"
-            query += f" ORDER BY {order_by} {order_dir}"
-
-            # Paginación
             query += " LIMIT %s OFFSET %s"
             params.extend([limit, offset])
 
             return self.fetch_all(query, params)
-
         except Exception as e:
             print(f"✗ Error obteniendo estudiantes: {e}")
             return []
@@ -653,3 +631,16 @@ class EstudianteModel(BaseModel):
     def update_table(self, table, data, condition, params=None):
         """Método helper para actualizar (compatibilidad con BaseModel)"""
         return self.update(table, data, condition, params)  # type: ignore
+
+    # Agregar al final de la clase EstudianteModel en estudiante_model.py
+    @classmethod
+    def get_all_estudiantes(cls, active_only=True, limit=100):
+        """Método de clase para obtener todos los estudiantes"""
+        instance = cls()  # Crear instancia
+        return instance.get_all(active_only=active_only, limit=limit)
+
+    @classmethod
+    def buscar_estudiantes(cls, search_term):
+        """Método de clase para buscar estudiantes"""
+        instance = cls()
+        return instance.search(search_term)

@@ -12,9 +12,11 @@ from decimal import Decimal
 
 # Modelos PostgreSQL
 from app.models.gasto_model import GastoModel
-from app.models.comprobante_adjunto_model import ComprobanteAdjuntoModel
+from app.models.comprobantes_adjuntos_model import ComprobantesAdjuntosModel
 from app.models.movimiento_caja_model import MovimientoCajaModel
-from app.database.connection import db
+from app.database.connection import DatabaseConnection
+
+db = DatabaseConnection
 
 logger = logging.getLogger(__name__)
 
@@ -60,7 +62,7 @@ class GastoController:
     def __init__(self):
         """Inicializa el controlador con los modelos necesarios"""
         self.gasto_model = GastoModel
-        self.comprobante_model = ComprobanteAdjuntoModel
+        self.comprobante_model = ComprobantesAdjuntosModel
         self.movimiento_model = MovimientoCajaModel
 
     # ============================================================================

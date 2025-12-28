@@ -8,6 +8,6 @@
             "source.organizeImports": "explicit"
         }
     },
-    "python.analysis.typeCheckingMode": "basic",
+    "python.analysis.typeCheckingMode": "basic",  // o "strict" para más análisis
     "python.terminal.activateEnvironment": true
 }

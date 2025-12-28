@@ -38,6 +38,7 @@ class EmpresaModel(BaseModel):
             "email",
             "logo_path",
             "created_at",
+            "updated_at",
         ]
 
         # Columnas requeridas para inserción

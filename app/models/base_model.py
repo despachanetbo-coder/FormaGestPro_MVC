@@ -1,8 +1,8 @@
-# app/models/base_model.py - Versión corregida
+# app/models/base_model.py - Versión mejorada con funciones de búsqueda
 from datetime import datetime
 import sys
 import os
-from typing import Any, Dict, Optional, Tuple, Union
+from typing import Any, Dict, List, Optional, Tuple, Union, TypeVar, Generic
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -16,6 +16,8 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+T = TypeVar("T")
+
 
 class BaseModel:
     """Clase base para todos los modelos que maneja la conexión a la base de datos"""
@@ -24,24 +26,32 @@ class BaseModel:
     _connection_pool = None
     _pool_lock = threading.Lock()
 
+    # Configuración de tabla para modelos específicos (debe sobrescribirse)
+    table_name = None
+    primary_key = "id"
+
     @classmethod
     def _get_connection_pool(cls):
         """Obtiene o crea el pool de conexiones"""
         if cls._connection_pool is None:
             with cls._pool_lock:
-                if cls._connection_pool is None:  # Double-check locking
+                if cls._connection_pool is None:
                     try:
-                        config = DatabaseConnection.get_connection
-                        cls._connection_pool = pool.SimpleConnectionPool(
-                            minconn=1,
-                            maxconn=10,
-                            host=config.get("host", "localhost"),
-                            database=config.get("database"),
-                            user=config.get("user"),
-                            password=config.get("password"),
-                            port=config.get("port", 5432),
-                        )
-                        print("✓ Pool de conexiones a PostgreSQL creado exitosamente")
+                        # Usar directamente desde connection.py
+                        from app.database.connection import DatabaseConnection
+
+                        db_instance = DatabaseConnection()
+                        db_instance._initialize()  # Asegurar inicialización
+
+                        cls._connection_pool = db_instance.get_connection_pool()
+
+                        if cls._connection_pool:
+                            print(
+                                "✓ Pool de conexiones a PostgreSQL obtenido exitosamente"
+                            )
+                        else:
+                            print("✗ No se pudo obtener pool de conexiones")
+
                     except Exception as e:
                         print(f"✗ Error creando pool de conexiones: {e}")
                         cls._connection_pool = None
@@ -84,7 +94,7 @@ class BaseModel:
         """Inicializa el modelo base con una conexión a la base de datos"""
         self.connection = None
         self.cursor = None
-        self._connect()
+        # self._connect()
 
     def __del__(self):
         """Limpia recursos al destruir el objeto"""
@@ -528,3 +538,366 @@ class BaseModel:
                 except:
                     pass
             return None
+
+    def delete_rows(
+        self, table: str, condition: str, params: Tuple = None  # type:ignore
+    ) -> Optional[int]:
+        """
+        Elimina registros de una tabla con condición
+
+        Args:
+            table (str): Nombre de la tabla
+            condition (str): Condición WHERE
+            params (tuple/list): Parámetros para la condición
+
+        Returns:
+            Optional[int]: Número de filas eliminadas o None en caso de error
+
+        Ejemplo:
+            filas = model.delete_rows(
+                table="ingresos",
+                condition="id = %s",
+                params=(1,)
+            )
+        """
+        try:
+            return self.delete(table, condition, params)
+        except Exception as e:
+            logger.error(f"✗ Error en delete_rows para tabla {table}: {e}")
+            if self.connection:
+                try:
+                    self.connection.rollback()
+                except:
+                    pass
+            return None
+
+    # ============ MÉTODOS DE BÚSQUEDA BÁSICOS ============
+
+    def get_by_id(self, record_id: int) -> Optional[Dict[str, Any]]:
+        """
+        Obtiene un registro por su ID
+
+        Args:
+            record_id (int): ID del registro a buscar
+
+        Returns:
+            Optional[Dict]: Datos del registro o None si no existe
+        """
+        if not self.table_name:
+            raise ValueError("La propiedad table_name debe ser definida en el modelo")
+
+        try:
+            query = f"SELECT * FROM {self.table_name} WHERE {self.primary_key} = %s"
+            return self.fetch_one(query, (record_id,))
+        except Exception as e:
+            logger.error(f"✗ Error obteniendo registro por ID: {e}")
+            return None
+
+    def get_all_records(
+        self,
+        limit: int = 100,
+        offset: int = 0,
+        order_by: str = None,  # type: ignore
+        order_desc: bool = True,
+    ) -> List[Dict[str, Any]]:
+        """
+        Obtiene todos los registros de la tabla
+
+        Args:
+            limit (int): Límite de registros
+            offset (int): Desplazamiento para paginación
+            order_by (str): Campo para ordenar
+            order_desc (bool): Si es True, orden descendente
+
+        Returns:
+            List[Dict]: Lista de registros
+        """
+        if not self.table_name:
+            raise ValueError("La propiedad table_name debe ser definida en el modelo")
+
+        try:
+            query = f"SELECT * FROM {self.table_name}"
+
+            # Ordenar
+            if order_by:
+                order_dir = "DESC" if order_desc else "ASC"
+                query += f" ORDER BY {order_by} {order_dir}"
+
+            # Paginación
+            query += " LIMIT %s OFFSET %s"
+
+            return self.fetch_all(query, (limit, offset))
+        except Exception as e:
+            logger.error(f"✗ Error obteniendo todos los registros: {e}")
+            return []
+
+    def get_by_field(self, field: str, value: Any) -> List[Dict[str, Any]]:
+        """
+        Obtiene registros por un campo específico
+
+        Args:
+            field (str): Nombre del campo
+            value (Any): Valor a buscar
+
+        Returns:
+            List[Dict]: Lista de registros que coinciden
+        """
+        if not self.table_name:
+            raise ValueError("La propiedad table_name debe ser definida en el modelo")
+
+        try:
+            query = f"SELECT * FROM {self.table_name} WHERE {field} = %s"
+            return self.fetch_all(query, (value,))
+        except Exception as e:
+            logger.error(f"✗ Error obteniendo registros por campo {field}: {e}")
+            return []
+
+    def get_one_by_field(self, field: str, value: Any) -> Optional[Dict[str, Any]]:
+        """
+        Obtiene un registro por un campo específico
+
+        Args:
+            field (str): Nombre del campo
+            value (Any): Valor a buscar
+
+        Returns:
+            Optional[Dict]: Primer registro que coincide o None
+        """
+        if not self.table_name:
+            raise ValueError("La propiedad table_name debe ser definida en el modelo")
+
+        try:
+            query = f"SELECT * FROM {self.table_name} WHERE {field} = %s LIMIT 1"
+            return self.fetch_one(query, (value,))
+        except Exception as e:
+            logger.error(f"✗ Error obteniendo registro por campo {field}: {e}")
+            return None
+
+    def search_records(
+        self,
+        search_term: str,
+        fields: List[str] = None,  # type: ignore
+        limit: int = 50,
+    ) -> List[Dict[str, Any]]:
+        """
+        Busca registros por término en múltiples campos
+
+        Args:
+            search_term (str): Término de búsqueda
+            fields (List[str]): Campos donde buscar (si es None, busca en todos los campos de texto)
+            limit (int): Límite de resultados
+
+        Returns:
+            List[Dict]: Registros que coinciden con la búsqueda
+        """
+        if not self.table_name:
+            raise ValueError("La propiedad table_name debe ser definida en el modelo")
+
+        try:
+            # Si no se especifican campos, obtener todos los campos de texto de la tabla
+            if fields is None:
+                columns = self.get_table_columns(self.table_name)
+                # Filtrar solo campos que probablemente sean de texto (puedes ajustar esta lógica)
+                fields = [
+                    col
+                    for col in columns
+                    if col not in ["id", "created_at", "updated_at"]
+                ]
+
+            # Construir condiciones de búsqueda
+            conditions = []
+            params = []
+
+            for field in fields:
+                conditions.append(f"{field}::text ILIKE %s")
+                params.append(f"%{search_term}%")
+
+            if not conditions:
+                return []
+
+            where_clause = " OR ".join(conditions)
+            query = f"SELECT * FROM {self.table_name} WHERE ({where_clause}) LIMIT %s"
+            params.append(limit)
+
+            return self.fetch_all(query, params)
+        except Exception as e:
+            logger.error(f"✗ Error buscando registros: {e}")
+            return []
+
+    def count_records(self, condition: str = None, params: Tuple = None) -> int:  # type: ignore
+        """
+        Cuenta el total de registros en la tabla
+
+        Args:
+            condition (str): Condición WHERE opcional
+            params (tuple/list): Parámetros para la condición
+
+        Returns:
+            int: Número total de registros
+        """
+        if not self.table_name:
+            raise ValueError("La propiedad table_name debe ser definida en el modelo")
+
+        try:
+            query = f"SELECT COUNT(*) as total FROM {self.table_name}"
+
+            if condition:
+                query += f" WHERE {condition}"
+
+            result = self.fetch_one(query, params)
+            return result["total"] if result else 0
+        except Exception as e:
+            logger.error(f"✗ Error contando registros: {e}")
+            return 0
+
+    def exists(self, record_id: int) -> bool:
+        """
+        Verifica si un registro existe por su ID
+
+        Args:
+            record_id (int): ID del registro
+
+        Returns:
+            bool: True si existe, False en caso contrario
+        """
+        try:
+            record = self.get_by_id(record_id)
+            return record is not None
+        except Exception as e:
+            logger.error(f"✗ Error verificando existencia de registro: {e}")
+            return False
+
+    def exists_by_field(self, field: str, value: Any, exclude_id: int = None) -> bool:  # type: ignore
+        """
+        Verifica si existe un registro con un valor específico en un campo
+
+        Args:
+            field (str): Nombre del campo
+            value (Any): Valor a verificar
+            exclude_id (int): ID a excluir (para actualizaciones)
+
+        Returns:
+            bool: True si existe, False en caso contrario
+        """
+        if not self.table_name:
+            raise ValueError("La propiedad table_name debe ser definida en el modelo")
+
+        try:
+            query = (
+                f"SELECT COUNT(*) as total FROM {self.table_name} WHERE {field} = %s"
+            )
+            params = [value]
+
+            if exclude_id:
+                query += f" AND {self.primary_key} != %s"
+                params.append(exclude_id)
+
+            result = self.fetch_one(query, params)
+            return result["total"] > 0 if result else False
+        except Exception as e:
+            logger.error(f"✗ Error verificando existencia por campo: {e}")
+            return False
+
+    # ============ MÉTODOS DE PAGINACIÓN AVANZADA ============
+
+    def paginate(
+        self,
+        page: int = 1,
+        per_page: int = 20,
+        conditions: str = None,  # type: ignore
+        params: Tuple = None,  # type: ignore
+        order_by: str = None,  # type: ignore
+        order_desc: bool = True,
+    ) -> Dict[str, Any]:
+        """
+        Obtiene registros paginados
+
+        Args:
+            page (int): Número de página (comienza en 1)
+            per_page (int): Registros por página
+            conditions (str): Condiciones WHERE
+            params (tuple/list): Parámetros para las condiciones
+            order_by (str): Campo para ordenar
+            order_desc (bool): Si es True, orden descendente
+
+        Returns:
+            Dict: Diccionario con datos de paginación
+        """
+        if not self.table_name:
+            raise ValueError("La propiedad table_name debe ser definida en el modelo")
+
+        try:
+            # Calcular offset
+            offset = (page - 1) * per_page
+
+            # Construir consulta base
+            query = f"SELECT * FROM {self.table_name}"
+
+            if conditions:
+                query += f" WHERE {conditions}"
+
+            # Ordenar
+            if order_by:
+                order_dir = "DESC" if order_desc else "ASC"
+                query += f" ORDER BY {order_by} {order_dir}"
+
+            # Paginación
+            query += " LIMIT %s OFFSET %s"
+
+            # Parámetros completos
+            all_params = list(params) if params else []
+            all_params.extend([per_page, offset])
+
+            # Obtener datos
+            data = self.fetch_all(query, all_params)
+
+            # Contar total
+            count_query = f"SELECT COUNT(*) as total FROM {self.table_name}"
+            if conditions:
+                count_query += f" WHERE {conditions}"
+
+            total_result = self.fetch_one(count_query, params)
+            total = total_result["total"] if total_result else 0
+
+            # Calcular total de páginas
+            total_pages = (total + per_page - 1) // per_page
+
+            return {
+                "data": data,
+                "pagination": {
+                    "page": page,
+                    "per_page": per_page,
+                    "total": total,
+                    "total_pages": total_pages,
+                    "has_prev": page > 1,
+                    "has_next": page < total_pages,
+                },
+            }
+
+        except Exception as e:
+            logger.error(f"✗ Error en paginación: {e}")
+            return {
+                "data": [],
+                "pagination": {
+                    "page": page,
+                    "per_page": per_page,
+                    "total": 0,
+                    "total_pages": 0,
+                    "has_prev": False,
+                    "has_next": False,
+                },
+            }
+
+    # ============ MÉTODOS DE COMPATIBILIDAD ============
+
+    def obtener_todos(self):
+        """Método de compatibilidad con nombres antiguos"""
+        return self.get_all_records()
+
+    def obtener_por_id(self, record_id):
+        """Método de compatibilidad con nombres antiguos"""
+        return self.get_by_id(record_id)
+
+    def buscar(self, termino, campos=None):
+        """Método de compatibilidad con nombres antiguos"""
+        return self.search_records(termino, campos)  # type:ignore

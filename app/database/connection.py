@@ -50,7 +50,7 @@ class DatabaseConnection:
             if not config_file:
                 raise FileNotFoundError("No se encontró el archivo database.ini")
 
-            config.read(config_file)
+            config.read(config_file, encoding="utf-8")
 
             self._config = {
                 "host": config.get("postgresql", "host", fallback="localhost"),

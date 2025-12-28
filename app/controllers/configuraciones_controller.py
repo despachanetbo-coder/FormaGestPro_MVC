@@ -21,7 +21,7 @@ T = TypeVar("T")
 class ConfiguracionesController(BaseModel):
     """Modelo para configuraciones del sistema"""
 
-    def __init__(self, db_path: str = None):
+    def __init__(self, db_path: str = None):  # type: ignore
         """
         Inicializar controlador de configuraciones
 
@@ -66,7 +66,7 @@ class ConfiguracionesController(BaseModel):
             configuracion_id = configuracion.save()
 
             if configuracion_id:
-                config_creada = ConfiguracionesModel.get_by_id(configuracion_id)
+                config_creada = BaseModel.get_by_id(configuracion, configuracion_id)
                 self._cache[clave] = config_creada  # Actualizar cache
                 mensaje = f"Configuración '{clave}' creada exitosamente"
                 return True, mensaje, config_creada
@@ -96,7 +96,7 @@ class ConfiguracionesController(BaseModel):
         """
         try:
             # Buscar configuración existente
-            configuracion = ConfiguracionesModel.get_by_id(config_id)
+            configuracion = BaseModel.get_by_id(ConfiguracionesModel(), config_id)
             if not configuracion:
                 return False, f"No se encontró configuración con ID {config_id}", None
 
@@ -282,7 +282,7 @@ class ConfiguracionesController(BaseModel):
                         resultado[k.strip()] = v.strip()
                 return resultado if resultado else valor_default
             else:
-                return tipo(valor) if valor else valor_default
+                return tipo(valor) if valor else valor_default  # type: ignore
 
         except Exception as e:
             logger.error(f"Error al obtener valor de configuración '{clave}': {e}")
